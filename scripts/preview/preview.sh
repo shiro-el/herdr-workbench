@@ -24,29 +24,31 @@ pick() { python -c "import json, sys; print(json.load(sys.stdin)['$1'])"; }
 
 repos() {
   mkdir -p "$C" "$S/remotes"
-  # acme-web: a small marketing site, two commits ahead of its remote, a new page not committed yet.
-  git init -q -b main "$C/acme-web"; cd "$C/acme-web"
+  # forno-lume: a bakery's site, two commits ahead of its remote, this week's page not committed yet.
+  git init -q -b main "$C/forno-lume"; cd "$C/forno-lume"
   mkdir -p src/pages src/components public data docs
-  printf '# Acme Web\n\nThe marketing site for Acme Cloud.\n\n## Develop\n\n```sh\nnpm install\nnpm run dev\n```\n\n- Pages live in `src/pages`.\n- Pricing comes from `data/plans.csv`.\n' > README.md
-  printf 'plan,price,seats,storage\nStarter,0,1,5 GB\nTeam,24,10,100 GB\nBusiness,79,50,1 TB\nEnterprise,custom,unlimited,unlimited\n' > data/plans.csv
-  printf '{\n  "name": "acme-web",\n  "private": true,\n  "scripts": { "dev": "vite", "build": "vite build", "test": "vitest" }\n}\n' > package.json
-  printf 'export function PlanCard(plan) {\n  return `<article class="plan">${plan.name}</article>`;\n}\n' > src/components/PlanCard.js
-  printf ':root { --accent: #6b93ff; }\nbody { margin: 0; font-family: system-ui, sans-serif; }\n' > src/style.css
-  printf '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#6b93ff"/></svg>\n' > public/logo.svg
-  printf '# Pricing page\n\n- [x] Plan cards\n- [x] Monthly / yearly toggle\n- [ ] FAQ\n' > docs/pricing.md
+  printf '# Forno Lume\n\nThe site of a neighbourhood bakery: what is baked each day, hours, pickup orders.\n\n## Develop\n\n```sh\nnpm install\nnpm run dev\n```\n\n- Pages live in `src/pages`.\n- The week comes from `data/bake.csv`.\n' > README.md
+  printf 'day,bread,note,price,sold_out\nTue,Country loaf,"Levain, 20%% whole wheat",6.50,\nWed,Seeded rye,"Sunflower, flax, a long cold proof",7.00,\nThu,Focaccia,"Rosemary and flaky salt, by the slab",4.00,yes\nFri,Fig and walnut,Only twenty of these,8.50,\nSat,Ten-year rye,"From the starter, nothing else",9.00,\n' > data/bake.csv
+  printf '{\n  "name": "forno-lume",\n  "private": true,\n  "scripts": { "dev": "vite", "build": "vite build", "test": "vitest" }\n}\n' > package.json
+  printf 'export function DayRow([day, bread, note, price]) {\n  return `<div class="day"><span class="d">${day}</span>${bread}<span class="price">${price}</span></div>`;\n}\n' > src/components/DayRow.js
+  printf ':root { --paper: #f3ede2; --ink: #1f1b16; --rust: #a8401c; }\nbody { margin: 0; font-family: Georgia, serif; }\n' > src/style.css
+  cp "$here/icons/forno-lume.svg" public/favicon.svg
+  printf '# This week page\n\n- [x] A row per day from data/bake.csv\n- [x] Sold out reads struck through\n- [ ] Pickup slots form\n' > docs/week.md
   git add -A; demo git commit -qm "Start the site"
-  git init -q --bare "$S/remotes/acme-web.git"; git remote add origin "$S/remotes/acme-web.git"; git push -q -u origin main
-  printf '.plan { border-radius: 14px; }\n' >> src/style.css; demo git commit -qam "Plan card styles"
-  demo git commit -q --allow-empty -m "Yearly toggle"
-  cp "$here/pricing.html" src/pages/pricing.html
-  # api-server and docs
-  git init -q -b main "$C/api-server"; cd "$C/api-server"; mkdir -p app tests
-  printf 'from fastapi import FastAPI\n\napp = FastAPI()\n\n\n@app.get("/plans")\ndef plans():\n    return []\n' > app/main.py
-  printf 'def test_plans():\n    assert True\n' > tests/test_plans.py; printf '# API server\n' > README.md
-  git add -A; demo git commit -qm "API skeleton"
-  git init -q -b main "$C/docs"; cd "$C/docs"; mkdir -p guides
-  printf '# Acme Docs\n\nGuides for Acme Cloud.\n' > README.md; printf '# Getting started\n' > guides/start.md
-  git add -A; demo git commit -qm "Docs"
+  git init -q --bare "$S/remotes/forno-lume.git"; git remote add origin "$S/remotes/forno-lume.git"; git push -q -u origin main
+  printf '.day { border-top: 1px solid #d9cfbf; }\n' >> src/style.css; demo git commit -qam "Rules between days"
+  demo git commit -q --allow-empty -m "Hours in the side column"
+  cp "$here/bake.html" src/pages/week.html
+  # orders-api and recipes
+  git init -q -b main "$C/orders-api"; cd "$C/orders-api"; mkdir -p app tests
+  printf 'from fastapi import FastAPI\n\napp = FastAPI()\n\n\n@app.get("/slots")\ndef slots():\n    return []\n' > app/main.py
+  printf 'def test_slots():\n    assert True\n' > tests/test_slots.py; printf '# Orders API\n\nPickup orders for Forno Lume.\n' > README.md
+  cp "$here/icons/orders-api.svg" favicon.svg
+  git add -A; demo git commit -qm "Orders skeleton"
+  git init -q -b main "$C/recipes"; cd "$C/recipes"; mkdir -p breads
+  printf '# Recipes\n\nThe bakery'"'"'s formulas, in bakers'"'"' percentages.\n' > README.md; printf '# Country loaf\n' > breads/country.md
+  cp "$here/icons/recipes.svg" icon.svg
+  git add -A; demo git commit -qm "Recipes"
 }
 
 app_home() {
@@ -106,19 +108,19 @@ tab() {
 kid() { demo hc run --bg --json --parent "$1" --no-notify --cwd "$(mixed "$C/$2")" -- node "$(mixed "$here/fake-agent.mjs")" "$3" "$4" "$5" >/dev/null; }
 
 scene() {
-  web=$(space acme-web "Mobile nav" codex working "Fix the nav on mobile")
-  api=$(space api-server "Plans endpoint" claude blocked "Add the /plans endpoint")
-  tab "$api" api-server "Billing tests" pi working "Tests for billing" >/dev/null
-  docs=$(space docs "Pricing guide" pi done "Write the pricing guide")
-  tab "$docs" docs "Spellcheck" codex working "Spellcheck the guides" >/dev/null
-  t=$(tab "$web" acme-web "Pricing page" claude done "Build the pricing page" "$(mixed "$here/screen-pricing.txt")")
-  kid "$t" acme-web codex done "Read plans.csv"
-  kid "$t" acme-web claude working "Draft the FAQ"
+  web=$(space forno-lume "Mobile header" codex working "Fix the header on mobile")
+  api=$(space orders-api "Pickup slots" claude blocked "Add the /slots endpoint")
+  tab "$api" orders-api "Slot tests" pi working "Tests for pickup slots" >/dev/null
+  rec=$(space recipes "Levain guide" pi done "Write the levain guide")
+  tab "$rec" recipes "Units" codex working "Grams everywhere" >/dev/null
+  t=$(tab "$web" forno-lume "This week page" claude done "Build this week's page" "$(mixed "$here/screen-week.txt")")
+  kid "$t" forno-lume codex done "Read bake.csv"
+  kid "$t" forno-lume claude working "Pickup slots form"
   sleep 2
   demo herdr-app do pane.focus "$(json terminal "$t")" >/dev/null
   demo herdr-app do layout.show '{"id":"panel"}' >/dev/null
   demo herdr-app do layout.select '{"stack":"panel-body","child":"files"}' >/dev/null
-  demo herdr-app do "demo-stage.view:430|330|$(mixed "$C/acme-web")|src/pages/pricing.html" >/dev/null
+  demo herdr-app do "demo-stage.view:430|330|$(mixed "$C/forno-lume")|src/pages/week.html" >/dev/null
   # The Page mode's browser, and the Inbox's git counts.
   sleep 12
   out=${1:-$src/preview.png}

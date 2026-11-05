@@ -1,0 +1,24 @@
+
+> Make this week's page from data/bake.csv. One row per day, sold out struck through, hours on the side.
+
+● I'll read the week and the row component first.
+
+  Read data/bake.csv (6 lines)
+  Read src/components/DayRow.js (3 lines)
+
+● Thursday's focaccia is marked sold out, so its row keeps the price but
+  strikes it, and the note says when it's back.
+
+  Write src/pages/week.html (+71)
+  Edit  src/style.css (+6 -1)
+  Edit  docs/week.md (+1 -1)
+
+● Done. The page is src/pages/week.html, served at
+  http://localhost:5173/week.
+
+  - Days come from data/bake.csv in order, prices in tabular figures.
+  - Hours and the address sit in a ruled side column.
+  - The pickup slots form is still open in docs/week.md.
+
+✻ Worked for 1m 52s
+

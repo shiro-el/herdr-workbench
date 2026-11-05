@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>This week's bake · Forno Lume</title>
+<style>
+  :root { --paper:#f3ede2; --ink:#1f1b16; --soft:#6f665a; --rule:#d9cfbf; --rust:#a8401c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font: 15px/1.5 Georgia, "Times New Roman", serif; }
+  .wrap { padding: 34px 46px 40px; }
+  .mast { display:flex; align-items:baseline; justify-content:space-between; border-bottom: 2px solid var(--ink); padding-bottom: 10px; }
+  .mast b { font-size: 22px; letter-spacing: .5px; }
+  .mast span { font: 12px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: 2px; text-transform: uppercase; color: var(--soft); }
+  h1 { font-weight: normal; font-size: 52px; line-height: 1.02; margin: 30px 0 6px; letter-spacing: -1px; }
+  h1 em { color: var(--rust); }
+  .lede { color: var(--soft); margin: 0 0 26px; max-width: 520px; }
+  .grid { display:grid; grid-template-columns: 1fr 190px; gap: 36px; }
+  .day { display:grid; grid-template-columns: 54px 1fr auto; gap: 0 14px; padding: 12px 0; border-top: 1px solid var(--rule); }
+  .day:first-child { border-top: 0; }
+  .d { font: 600 11px/2.1 "Segoe UI", system-ui, sans-serif; letter-spacing: 2px; text-transform: uppercase; color: var(--rust); }
+  .name { font-size: 18px; }
+  .note { display:block; font-size: 13px; color: var(--soft); font-style: italic; }
+  .price { font-variant-numeric: tabular-nums; font-size: 16px; padding-top: 2px; }
+  .out { text-decoration: line-through; color: var(--soft); }
+  aside { border-left: 1px solid var(--rule); padding-left: 22px; font-size: 14px; }
+  aside h4 { margin: 4px 0 6px; font: 600 11px/1.6 "Segoe UI", system-ui, sans-serif; letter-spacing: 2px; text-transform: uppercase; color: var(--soft); }
+  aside p { margin: 0 0 18px; }
+  aside .stamp { display:inline-block; border: 1.5px solid var(--rust); color: var(--rust); padding: 6px 10px; transform: rotate(-3deg); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mast"><b>Forno Lume</b><span>Week 45 · Nov 3 – 8</span></div>
+  <h1>What comes out of<br>the oven <em>this week</em></h1>
+  <p class="lede">Everything is baked at five and gone by early afternoon. Order by eight the evening before and we keep a loaf for you.</p>
+  <div class="grid">
+    <div id="days"></div>
+    <aside>
+      <h4>Open</h4>
+      <p>Tue – Sat, 7 to 14<br>Sunday, 8 to 12</p>
+      <h4>Find us</h4>
+      <p>14 Ropemaker Lane<br>by the old tram stop</p>
+      <h4>This week</h4>
+      <p>The rye starter turned ten. Saturday's loaf uses only it.</p>
+      <span class="stamp">Pickup slots open</span>
+    </aside>
+  </div>
+</div>
+<script>
+  const days = [
+    ["Tue", "Country loaf", "Levain, 20% whole wheat", "6.50"],
+    ["Wed", "Seeded rye", "Sunflower, flax, a long cold proof", "7.00"],
+    ["Thu", "Focaccia", "Rosemary and flaky salt, by the slab", "4.00", true],
+    ["Fri", "Fig and walnut", "Only twenty of these", "8.50"],
+    ["Sat", "Ten-year rye", "From the starter, nothing else", "9.00"],
+  ];
+  document.getElementById("days").innerHTML = days.map(([d, n, note, p, out]) => `
+    <div class="day"><span class="d">${d}</span>
+      <span><span class="name${out ? " out" : ""}">${n}</span><span class="note">${out ? "Sold out, back next week" : note}</span></span>
+      <span class="price${out ? " out" : ""}">€${p}</span></div>`).join("");
+</script>
+</body>
+</html>
