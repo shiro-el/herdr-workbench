@@ -1,0 +1,24 @@
+
+> Build the pricing page from data/plans.csv. Three cards, Team highlighted, a yearly toggle.
+
+● I'll read the plans and the existing components first.
+
+  Read data/plans.csv (5 lines)
+  Read src/components/PlanCard.js (4 lines)
+
+● The CSV has four plans; Enterprise is "custom", so I'll leave it for a
+  contact row under the cards and show Starter, Team and Business.
+
+  Write src/pages/pricing.html (+62)
+  Edit  src/style.css (+4 -1)
+  Edit  docs/pricing.md (+1 -1)
+
+● Done. The page is at src/pages/pricing.html and the dev server serves it at
+  http://localhost:5173/pricing.
+
+  - Team carries the "Most popular" tag and the accent border.
+  - Yearly is on by default and reads "save 20%".
+  - Prices come from data/plans.csv; the FAQ is still open in docs/pricing.md.
+
+✻ Worked for 2m 14s
+

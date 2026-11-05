@@ -2,6 +2,8 @@
 
 A workbench window for Herdr App. Agents sit in one Inbox list on the left, newest finish first, with their sub-agents as a tree. Their terminals fill the middle in framed panes under slim tabs. On the right, a panel holds files, git changes, GitHub, worktrees, ports and the machine's load. A file opens in a floating viewer that draws Markdown, tables, pictures and HTML pages as Chrome draws them. Ctrl+P opens any path or link the focused terminal shows. It runs on Windows, macOS and Linux, and reaches other machines over ssh.
 
+![Herdr Workbench](preview.png)
+
 ## What you see
 
 The sidebar, tabs, panes, Actions and New menu are [herdr-t3](https://github.com/JinJieBeWater/herdr-t3)'s, as [its RECIPE](https://github.com/JinJieBeWater/herdr-t3/blob/main/RECIPE.md) describes them. What differs:

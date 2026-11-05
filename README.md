@@ -2,6 +2,8 @@
 
 A workbench layout for [Herdr App](https://herdr.dev): your agents in one Inbox on the left, their terminals in the middle, and on the right a panel with files, git, GitHub, worktrees, ports and the machine they run on. Files open in floating viewers that draw Markdown, tables, pictures and whole web pages. Ctrl+P opens any path or link an agent just printed. Works on Windows, macOS and Linux, and on your other machines over ssh.
 
+![Herdr Workbench](preview.png)
+
 Thanks to [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3), which this layout is built on, and to [alarboulletmarin/herdr-github](https://github.com/alarboulletmarin/herdr-github) for the Changes and GitHub panels.
 
 ## Features
@@ -78,6 +80,10 @@ Copy `layouts/`, `mods/` and `t3-common/` into `~/.config/herdr-app/`, merge `ke
 - Ctrl+P: `hc read` of the focused terminal.
 - GitHub and Worktrees: `gh`. Ports: `ss` or `Get-NetTCPConnection`, and `ssh -L` when you forward one.
 - The GitHub panel's agent briefs ask the agent to report in Korean. Change it in `mods/github/brief.js`.
+
+## Preview picture
+
+`sh scripts/preview/preview.sh up`, then `scene`, then `down` rebuilds `preview.png` on Windows from made-up projects and stand-in agents, in a Herdr window with its own core and home.
 
 ## License
 
