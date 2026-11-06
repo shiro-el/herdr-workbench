@@ -100,6 +100,12 @@ export default class Tabs extends View {
         // One at a time: a second press finds the first's pane gone.
         if (command === "close-tab") await this.closeTab(focused()?.tab, cx);
         // The New space key: t3-new-menu's machine and folder steps, as the sidebar's button.
+        // ctrl-shift-f: the panel's Search, its field taking the keyboard.
+        else if (command === "search") {
+          run("layout.show", { id: "panel" });
+          run("layout.select", { stack: "panel-body", child: "search" });
+          setShared("t3-panel.search-focus", Date.now());
+        }
         else if (command === "new-space") { setShared("t3-new-menu.start", { machine: undefined, at: Date.now() }); run("mod.open", { name: "t3-new-menu" }); }
         else if (command === "close-pane") await this.closePane(focused()?.pane, cx);
         else if (command.startsWith("close-tab:")) await this.closeTab(command.slice("close-tab:".length), cx);

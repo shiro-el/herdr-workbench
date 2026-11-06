@@ -17,9 +17,10 @@ The sidebar, tabs, panes, Actions and New menu are [herdr-t3](https://github.com
 - **Tab bar end**: a panel button before the window buttons.
 - **New menu**, New space: after the machine, a folder step on that machine. The input holds a path, its home first. Rows: `New space here` with the folder up to the last `/`, then its folders, those starting with what follows first. Footer: `Browse…` on this computer, `← Machines`.
 - **Right panel** (`panel`, 380px, 280 to 900, hidden at first), beside the panes:
-  - `panel-nav`, 30px: icon tabs for Files, Changes, GitHub, Worktrees, Ports and Machine.
+  - `panel-nav`, 30px: icon tabs for Files, Search, Changes, GitHub, Worktrees, Ports and Machine.
   - Below it, the chosen one:
     - **Files**: a tree with Material Icon Theme icons, light variants on a light theme.
+    - **Search**: a field, then matches grouped by file in 22px rows, the header with a count, each match its line number and the line with the match tinted in the accent. The header's subtitle counts matches and files and names the folder.
     - **Changes** and **GitHub**: herdr-github's `git` and `github` mods.
     - **Worktrees**: each checkout of the repo, `↑↓`, changed files, its PR, the agents in it.
     - **Ports**: listening servers by space. Ports from 32768 up are under Other.
@@ -32,6 +33,7 @@ The sidebar, tabs, panes, Actions and New menu are [herdr-t3](https://github.com
     - HTML: Page, Source, Structure.
     - A web address: Page only.
   - Code shows in JetBrains Mono with soft wrap, so Hangul doesn't overlap.
+  - Editing: `●` after the name while unsaved, `Saving…` while saving, `⚠` in the tools when the file changed on disk under unsaved changes or was deleted. Bars under the title bar ask Save, Discard, Cancel on close, offer Reload from disk, or say why a file is read only.
 - **Ctrl+P popup**: 640×430 at the top, 60px down.
   - A 40px input with an `accent` border.
   - Nine 38px rows: a 16px icon, the label, a dim detail line.
@@ -57,6 +59,16 @@ The sidebar, tabs, panes, Actions and New menu are [herdr-t3](https://github.com
   - In Markdown, a relative link opens that file and a web link the browser.
   - Pictures are copied into `cache/t3-files/` by content hash. From another machine they come through base64, 6 MB at most.
   - Files that aren't UTF-8 are decoded as CP949.
+  - Source is an editable `EditorState`, unless the file was read as CP949 or is over 1 MB. `ctrl-s` saves. A BOM and CRLF line ends are kept.
+  - Every 1.5s here, 4s on another machine, the viewer reads the file again. Changed with nothing unsaved: it reloads. Changed under unsaved changes: `⚠`, and clicking it offers Reload from disk.
+  - Saving reads the file first. A change not yet seen is marked `⚠` and the save stops; the next `ctrl-s` saves over it.
+  - Here `writeTextFile(path, text, expected)` saves. On another machine `exec` has no stdin: the text goes base64 in 24000-character pieces appended to a `mktemp` file, then one `sh` call compares the file's sha256 with what the viewer last read and, if it matches, runs `base64 -d` and `cat` over the file, which keeps its mode. A mismatch fails with `CHANGED` and marks `⚠`; a save while `⚠` shows goes over it. Without `sha256sum` or `shasum` there, it saves unchecked.
+  - While the shared window has unsaved changes, shared `t3-files.view-dirty` is true and Files, Ctrl+P and Search open files in windows of their own.
+- **Search**:
+  - One `sh` call on the focused terminal's machine: the repository's top from `git rev-parse --show-toplevel`, else the folder, then `rg --null --fixed-strings --smart-case`, else `git grep --null -I`, else `grep -rnIZ`, the first 2000 lines.
+  - Without rg, smart case is `-i` when the text has no capital.
+  - It searches 250ms after typing stops, from two characters; Enter searches one. It searches again when the focused terminal moves.
+  - `ctrl-shift-f` runs `t3-tabs.search`: `layout.show` the panel, `layout.select` Search, and shared `t3-panel.search-focus` set to the time, which the view watches to focus its field. The key has to be in `keys.json`'s `terminal` section, which wins over the layout's.
 - **Page mode**: `shot.mjs`, run with node 22+, starts a headless browser with a fresh profile.
   - It talks to the browser over CDP, 778 CSS px wide at 2x, up to 8000px tall, and prints the size it caught.
   - The page comes from the folder's server, so `fetch()` works. Without python, `file://`.
@@ -128,5 +140,8 @@ The sidebar, tabs, panes, Actions and New menu are [herdr-t3](https://github.com
 - Clicking a `.md` file in Files opens the viewer on Preview, and a `.html` file on Page with the page drawn.
 - New space, then another machine, lists that machine's home folders; Enter on `New space here` in one opens a space there.
 - `node mods/t3-new-menu/check-new-menu.cjs` prints `ok new menu`.
+- In the viewer, typing in Source shows `●`; `ctrl-s` saves the file and the `●` goes. On another machine too.
+- While a file is open with unsaved changes, changing it from a terminal shows `⚠`; without changes, the viewer shows the new text.
+- `ctrl-shift-f`, then typing a word from the repository, lists its matches; clicking one opens the file.
 - In a terminal that printed a relative path, Ctrl+P lists it; Enter opens it in the viewer.
 - Typing `google.com` in Ctrl+P and pressing Enter opens `https://google.com` in the viewer's Page mode.

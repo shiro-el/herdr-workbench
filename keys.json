@@ -2,8 +2,14 @@
   "global": {
     "ctrl-p": "mod.open:t3-spotlight"
   },
+  "terminal": {
+    "ctrl-shift-f": "t3-tabs.search",
+    "ctrl-alt-shift-f": "terminal.search"
+  },
   "layout:herdr-t3": {
     "ctrl-shift-n": "t3-tabs.new-space",
+    "ctrl-shift-f": "t3-tabs.search",
+    "cmd-shift-f": "t3-tabs.search",
     "cmd-shift-n": "t3-tabs.new-space",
     "cmd-shift-b": "t3-chrome.sidebar",
     "ctrl-shift-b": "t3-chrome.sidebar",

@@ -215,6 +215,16 @@
                       }
                     },
                     {
+                      "id": "search",
+                      "type": "block",
+                      "content": {
+                        "mod": "t3-panel",
+                        "props": {
+                          "view": "search"
+                        }
+                      }
+                    },
+                    {
                       "id": "changes",
                       "type": "block",
                       "content": {

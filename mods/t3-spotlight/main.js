@@ -5,7 +5,7 @@
 // machine. ↑/↓ to pick, Enter to open, Tab to complete, Esc to leave.
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { hc, spaces, focused, panes, theme, props, closeOverlay, openOverlay, run, home } from "herdr";
+import { hc, spaces, focused, panes, theme, props, closeOverlay, openOverlay, run, home, shared } from "herdr";
 import { slashes, openExternal, reveal, revealLabel } from "./common/platform.js";
 import { resolve, parentOf, nameOf, join, under, isAbsolute, fromFileUrl } from "./common/paths.js";
 import { stat, list as listDir, fold } from "./common/fsx.js";
@@ -72,8 +72,11 @@ const FILE_EXT = new Set(["js", "mjs", "cjs", "ts", "tsx", "jsx", "json", "md", 
   "csv", "tsv", "xml", "svg", "png", "jpg", "jpeg", "gif", "webp", "pdf", "zip", "sql", "env", "vue", "svelte", "lua", "php", "dart"]);
 const openBrowser = (url) => void openExternal(url);
 // t3-files' floating viewer (same spot and key as the tree's), for a file or a web page.
+// One holding unsaved changes isn't reused: the file gets its own.
 function view(viewer) {
-  openOverlay({ mod: "t3-files", kind: "window", key: "t3-files:view", width: 780, height: 580, props: { viewer } });
+  const own = Boolean(shared("t3-files.view-dirty")), what = viewer.url ?? `${viewer.on ?? ""}:${viewer.root}/${viewer.path}`;
+  openOverlay({ mod: "t3-files", kind: "window", key: own ? `t3-files:${what}` : "t3-files:view", width: 780, height: 580,
+    props: { viewer: { ...viewer, slot: !own } } });
 }
 
 export default class Spotlight extends View {

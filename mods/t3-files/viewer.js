@@ -1,19 +1,21 @@
 // The floating viewer (a `kind: "window"` overlay): a title bar to drag it by, the file below. Markdown and
 // CSV/TSV show rendered, with their source a click away; HTML shows as Chromium draws it (page.js, a picture of the
 // whole page), its source, its structure (no CSS), or the real page in the browser through a server on the file's
-// machine (serve.js); a picture shows as itself.
+// machine (serve.js); a picture shows as itself. Text is edited in Source and saved with Ctrl+S; a file an agent
+// changes reloads by itself, or, with unsaved changes, shows a mark that offers to reload.
 import { div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, TextView } from "gpui-base";
-import { exec, theme, props, closeOverlay, appHome, window } from "herdr";
+import { exec, theme, props, closeOverlay, appHome, window, focused, readTextFile, setShared } from "herdr";
 import { createHash } from "crypto";
 import * as fs from "fs/promises";
-import { materialIcon, readPreview, openFloat, copyPath } from "./util.js";
+import { materialIcon, readPreview, openFloat, copyPath, saveText } from "./util.js";
 import { ensure, stop, prune, servers, serverKey, pageUrl, openBrowser } from "./serve.js";
 import { shoot, shootUrl, dropShot } from "./page.js";
 
 const IMAGES = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"]);
 const MAX_IMAGE = 6 * 1024 * 1024; // exec carries 8 MiB of output; base64 is a third bigger
 const ROWS = 1000, COLS = 40;
+const unBom = (s) => (typeof s === "string" && s.charCodeAt(0) === 0xfeff ? s.slice(1) : s);
 
 export function kindOf(path) {
   const ext = (path.includes(".") ? path.split(".").pop() : "").toLowerCase();
@@ -85,24 +87,117 @@ export class Viewer {
     this.v = v; this.kind = v.url ? "web" : kindOf(v.path);
     this.mode = this.kind === "md" || this.kind === "csv" ? "render" : this.kind === "html" || this.kind === "web" ? "page" : "source";
     this.handle = cx.focus_handle(); this.handle.focus();
+    this.space = focused()?.space ?? null; // the space it was opened in: it closes when another is shown
     this.serving = null; this.note = null;
     if (this.kind === "html") cx.spawn(async (cx) => { await prune(v.root, v.on); cx.notify(); });
     this.page = null; // { busy } | { image, width, height, cut } | { error }
     if (this.kind === "html" || this.kind === "web") this.capture(cx);
     if (this.kind === "web") { this.loaded = true; return; }
+    // Editing: `base` is the editor's text as last loaded or saved, `disk` the file's as last seen. `stale`: it
+    // changed on disk under unsaved changes; `gone`: it was deleted.
+    this.dirty = false; this.stale = false; this.gone = false;
     cx.spawn(async (cx) => {
       if (this.kind === "image") {
         try { this.picture = await cacheImage(v.root, v.path, v.on); } catch (e) { this.error = String(e?.message ?? e); }
       } else {
-        const r = await readPreview(v.root, v.path, v.on);
+        const r = await readPreview(v.root, v.path, v.on, true);
         this.code = r.code ?? null; this.text = r.text ?? null; this.error = r.error ?? null;
-        if (this.kind === "csv" && this.text != null) this.table = parseTable(this.text, v.path.toLowerCase().endsWith(".tsv"));
+        this.editable = Boolean(r.editable); this.why = r.why ?? null; this.bom = Boolean(r.bom); this.legacy = Boolean(r.legacy);
+        if (this.code) {
+          this.base = this.code.value(); this.disk = this.text; this.crlf = this.text.includes("\r\n");
+          this.code.on("change", (_e, cx) => this.edited(cx));
+        }
+        if (this.kind === "csv" && this.text != null) this.table = parseTable(this.text, this.tsv());
       }
       this.loaded = true; cx.notify();
     });
+    if (this.kind !== "image") cx.timer.every(v.on ? 4000 : 1500, (cx) => this.check(cx));
   }
 
-  close() { this.code?.release?.(); this.closed = true; dropShot(this.page?.image); }
+  close() {
+    if (this.v.slot && this.dirty) setShared("t3-files.view-dirty", false);
+    this.code?.release?.(); this.closed = true; dropShot(this.page?.image);
+  }
+
+  tsv() { return this.v.path.toLowerCase().endsWith(".tsv"); }
+  full() { return `${this.v.root}/${this.v.path}`; }
+  dirtyNow() { return Boolean(this.code && this.editable) && this.code.value() !== this.base; }
+
+  edited(cx) {
+    const d = this.dirtyNow();
+    if (d === this.dirty) return;
+    this.dirty = d;
+    if (this.v.slot) setShared("t3-files.view-dirty", d); // so a click elsewhere opens a window of its own
+    cx.notify();
+  }
+
+  // The file as it is on disk: its text, null when it's gone, undefined when it couldn't be read this time.
+  readRaw() { return readTextFile(this.full(), { on: this.v.on }).catch(() => undefined); }
+
+  // An agent changed the file: reload it, or with unsaved changes, mark it.
+  check(cx) {
+    if (!this.code || this.legacy || this.checking || this.saving || this.closed) return;
+    this.checking = true;
+    cx.spawn(async (cx) => {
+      try {
+        const raw = await this.readRaw();
+        if (raw === undefined || this.closed || this.saving) return;
+        if (raw === null) { if (!this.gone) { this.gone = true; cx.notify(); } return; }
+        const now = unBom(raw), was = this.gone;
+        this.gone = false;
+        if (now === this.disk) { if (was) cx.notify(); return; }
+        this.disk = now;
+        if (!this.dirtyNow()) this.reload(now, cx);
+        else if (now === this.code.value()) { this.base = now; this.stale = false; this.edited(cx); }
+        else this.stale = true;
+        cx.notify();
+      } finally { this.checking = false; }
+    });
+  }
+
+  reload(text, cx) {
+    this.disk = text; this.text = text; this.stale = false; this.askReload = false; this.gone = false;
+    this.code.set_value(text); this.base = this.code.value(); this.crlf = text.includes("\r\n");
+    if (this.kind === "csv") this.table = parseTable(text, this.tsv());
+    this.edited(cx);
+    if (this.kind === "html" && this.page) this.capture(cx);
+    cx.notify();
+  }
+
+  // Ctrl+S. A change on disk not yet shown is marked first; once marked, saving goes over it.
+  save(cx, then) {
+    if (!this.editable || this.saving) return;
+    if (!this.dirtyNow() && !this.gone) return void then?.();
+    this.saving = true; this.note = null; cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        const raw = await this.readRaw();
+        if (typeof raw === "string" && unBom(raw) !== this.disk && !this.stale) {
+          this.disk = unBom(raw); this.stale = true;
+          this.note = "Changed on disk while you were editing. Ctrl+S again saves yours over it.";
+          return;
+        }
+        const mine = this.code.value(), out = this.crlf ? mine.replace(/\r?\n/g, "\r\n") : mine;
+        await saveText(this.full(), (this.bom ? "\ufeff" : "") + out, typeof raw === "string" ? raw : null, this.v.on, this.stale);
+        this.disk = out; this.text = mine; this.base = mine; this.stale = false; this.gone = false; this.askReload = false;
+        if (this.kind === "csv") this.table = parseTable(mine, this.tsv());
+        if (this.kind === "html" && this.page) this.capture(cx);
+        this.edited(cx);
+        then?.();
+      } catch (e) {
+        // Written between the read and the save: marked, and the next Ctrl+S saves over it.
+        if (String(e?.message) === "CHANGED") { this.stale = true; this.note = "Changed on disk while saving. Ctrl+S again saves yours over it."; }
+        else this.note = `Couldn't save: ${String(e?.message ?? e)}`;
+      }
+      finally { this.saving = false; cx.notify(); }
+    });
+  }
+
+  // Closing with unsaved changes asks first.
+  requestClose(cx) {
+    if (this.dirtyNow()) { this.confirming = true; cx.notify(); }
+    else closeOverlay(props()?.overlay);
+  }
 
   // Draws the page again (after an edit, say); the old picture stays until the new one is there.
   capture(cx) {
@@ -153,7 +248,7 @@ export class Viewer {
         .when(p.cut, (e) => e.child(div().p(10).text_size(12).text_color("#666666").child(`The page goes on; the first ${p.height} px are shown`)));
     }
     if (this.mode === "render" && this.kind === "md") return v_flex().id("viewer-md").flex_1().min_h(0).overflow_y_scrollbar().px(24).py(18)
-      .child(TextView.markdown("viewer-md-text", this.text ?? "").selectable(true).on_link_click((url) => follow(url, this.v)));
+      .child(TextView.markdown("viewer-md-text", (this.editable ? this.code.value() : this.text) ?? "").selectable(true).on_link_click((url) => follow(url, this.v)));
     if (this.mode === "render" && this.kind === "html") return v_flex().id("viewer-html").flex_1().min_h(0).overflow_y_scrollbar().px(24).py(18)
       .child(TextView.html("viewer-html-text", this.text ?? "").selectable(true).on_link_click((url) => follow(url, this.v)));
     if (this.mode === "render" && this.kind === "csv") return this.tableView(t);
@@ -174,7 +269,14 @@ export class Viewer {
         .child(String(Math.max(0, rows.length - 1)) + " rows · " + cols + " columns" + (rows.length > ROWS ? " · first " + ROWS + " shown" : "")));
   }
 
-  render() {
+  render(cx) {
+    // Another space shown: this one's file goes with its space.
+    const now = focused()?.space ?? null;
+    if (this.space && now && now !== this.space && !this.leaving && !this.dirtyNow()) {
+      this.leaving = true;
+      const id = props()?.overlay;
+      cx.spawn(async () => closeOverlay(id));
+    }
     const t = theme(), v = this.v, web = this.kind === "web";
     const host = web ? (/^[a-z]+:\/\/([^/?#]+)/i.exec(v.url)?.[1] ?? v.url) : null;
     const name = web ? host : v.path.split("/").pop(), dir = web ? v.url : v.path.includes("/") ? v.path.slice(0, v.path.lastIndexOf("/")) : "";
@@ -182,19 +284,35 @@ export class Viewer {
     const tool = (id, child, tip, act) => div().id(id).h(24).min_w(24).px(child && typeof child === "string" && child.length > 2 ? 8 : 0).flex_none().flex().items_center().justify_center().rounded(6)
       .text_size(12).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip(tip)
       .on_mouse_down("left", stopPress).on_click(act).child(child);
-    const close = () => closeOverlay(props()?.overlay);
+    const close = (_e, cx) => this.requestClose(cx);
     const modes = this.kind === "md" || this.kind === "csv" ? [["render", this.kind === "csv" ? "Table" : "Preview"], ["source", "Source"]]
       : this.kind === "html" ? [["page", "Page"], ["source", "Source"], ["render", "Structure"]] : [];
     const seg = h_flex().flex_none().p(2).gap(2).rounded(7).bg(t.background).border_1().border_color(t.border)
       .children(modes.map(([m, label]) => div().id(`mode-${m}`).h(20).px(8).flex().items_center().rounded(5).text_size(11.5)
         .bg(this.mode === m ? t.selected : "#00000000").text_color(this.mode === m ? t.foreground : t.muted)
-        .cursor_pointer().on_mouse_down("left", stopPress).on_click((_e, cx) => { this.mode = m; cx.notify(); }).child(label)));
+        .cursor_pointer().on_mouse_down("left", stopPress).on_click((_e, cx) => {
+          this.mode = m;
+          if (m === "render" && this.kind === "csv" && this.editable) this.table = parseTable(this.code.value(), this.tsv());
+          cx.notify();
+        }).child(label)));
+    const button = (id, label, act, strong) => div().id(id).h(22).px(10).flex_none().flex().items_center().rounded(6).text_size(12)
+      .bg(strong ? t.solid : t.background).text_color(strong ? t.solid_foreground : t.foreground).border_1().border_color(strong ? t.solid : t.border)
+      .cursor_pointer().hover((s) => s.opacity(0.85)).on_mouse_down("left", stopPress).on_click(act).child(label);
+    const bar = (id, text, color, ...buttons) => h_flex().id(id).flex_none().px(12).py(6).gap(8).items_center().bg(t.raised)
+      .border_b(1).border_color(t.border).text_size(12)
+      .child(div().flex_1().min_w(0).text_color(color).child(text)).children(buttons);
+    const dirty = this.dirtyNow();
     const running = web ? null : servers()[serverKey(v.root, v.on)];
     return v_flex().id("viewer").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(13)
-      .track_focus(this.handle).on_key_down((e) => { if (e.key === "escape") close(); })
+      .track_focus(this.handle).on_key_down((e, cx) => {
+        const m = e.modifiers ?? {};
+        if (e.key === "escape") { if (this.confirming) { this.confirming = false; cx.notify(); } else this.requestClose(cx); }
+        else if (e.key === "s" && (m.control || m.platform) && !m.alt && !m.shift) { cx.stop_propagation(); this.save(cx); }
+      })
       .child(h_flex().h(38).flex_none().pl(12).pr(6).gap(8).items_center().bg(t.chrome).border_b(1).border_color(t.border)
         .child(image(`mods/t3-files/material/${materialIcon(web ? "page.html" : name, false, false)}.svg`).size(16).flex_none())
         .child(div().flex_none().max_w(260).truncate().font_semibold().child(name))
+        .when(dirty || this.saving, (e) => e.child(div().flex_none().text_size(11.5).text_color(t.muted).child(this.saving ? "Saving…" : "●")))
         .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child([v.on, dir].filter(Boolean).join(" · ")))
         .when(modes.length > 0, (e) => e.child(seg))
         .when((this.kind === "html" || web) && this.mode === "page", (e) => e.child(tool("viewer-redraw", this.page?.busy ? "…" : "↻",
@@ -204,9 +322,20 @@ export class Viewer {
           v.on ? `Serves ${v.root} on ${v.on} (127.0.0.1), forwards it here, opens the page` : `Serves ${v.root} here (127.0.0.1) and opens the page`,
           (_e, cx) => this.browse(cx))))
         .when(Boolean(running), (e) => e.child(tool("viewer-stop", `:${running.port} ■`, "Stop the server (and its tunnel)", (_e, cx) => this.stopServing(cx))))
+        .when(this.stale || this.gone, (e) => e.child(tool("viewer-stale", div().text_color(t.ansi3).child("⚠"),
+          this.gone ? "Deleted on disk. Ctrl+S saves it again" : "Changed on disk. Click to reload it",
+          (_e, cx) => { this.askReload = !this.askReload; cx.notify(); })))
         .child(tool("viewer-copy", "⧉", web ? "Copy address" : "Copy path", () => copyPath(web ? v.url : `${v.root}/${v.path}`)))
         .child(tool("viewer-close", svg("mods/t3-files/x.svg").size(13), "Close (Esc)", close)))
+      .when(Boolean(this.confirming), (e) => e.child(bar("viewer-confirm", `Unsaved changes in ${name}.`, t.foreground,
+        button("confirm-save", "Save", (_e, cx) => { this.confirming = false; this.save(cx, () => closeOverlay(props()?.overlay)); }, true),
+        button("confirm-discard", "Discard", () => closeOverlay(props()?.overlay)),
+        button("confirm-cancel", "Cancel", (_e, cx) => { this.confirming = false; cx.notify(); }))))
+      .when(Boolean(this.askReload && this.stale), (e) => e.child(bar("viewer-reload", "Changed on disk while you were editing. Ctrl+S saves yours over it.", t.foreground,
+        button("reload", "Reload from disk", (_e, cx) => this.reload(this.disk, cx)))))
       .when(Boolean(this.note), (e) => e.child(div().px(12).py(6).text_size(12).text_color(t.ansi1).bg(t.raised).child(this.note)))
+      .when(Boolean(this.why) && this.mode === "source", (e) => e.child(div().px(12).py(4).flex_none().text_size(11.5).text_color(t.dim)
+        .border_b(1).border_color(t.border).child(this.why)))
       .child(div().id("viewer-body").flex_1().min_h(0).flex().flex_col().on_mouse_down("left", stopPress).child(this.body(t)));
   }
 }

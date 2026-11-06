@@ -1,5 +1,5 @@
 // The right-hand panel of herdr-t3: a row of tabs over the panel's stack (Files, Changes, GitHub, and this mod's
-// Worktrees, Ports and Machine), each copy one view by props: { view: "nav" | "worktrees" | "ports" | "machine" }.
+// Search, Worktrees, Ports and Machine), each copy one view by props: { view: "nav" | "search" | "worktrees" | "ports" | "machine" }.
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { theme, props, layout, run } from "herdr";
@@ -7,10 +7,12 @@ import { find, glyph, button } from "./common.js";
 import { Worktrees } from "./worktrees.js";
 import { Ports } from "./ports.js";
 import { Machine } from "./machine.js";
+import { Search } from "./search.js";
 
 // The stack's children, in the order the tabs show them.
 export const VIEWS = [
   ["files", "Files", "mods/files/file.svg"],
+  ["search", "Search", "search"],
   ["changes", "Changes", "mods/changes/changes.svg"],
   ["github", "GitHub", "mods/github/icons/github.svg"],
   ["worktrees", "Worktrees", "worktree"],
@@ -25,6 +27,7 @@ export default class Panel extends View {
     if (this.kind === "worktrees") this.part = new Worktrees(this, cx);
     else if (this.kind === "ports") this.part = new Ports(this, cx);
     else if (this.kind === "machine") this.part = new Machine(this, cx);
+    else if (this.kind === "search") this.part = new Search(this, cx);
   }
 
   render(cx) {

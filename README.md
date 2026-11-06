@@ -22,6 +22,7 @@ Thanks to [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3), w
 - A panel button at the end of the tab bar, or `ctrl-shift-g`, opens the right panel.
 
 **Right panel**
+- **Search**: text in every file of the focused terminal's repository, on its machine. Plain text, smart case, `.gitignore` respected, matches grouped by file. A match opens its file in the viewer. Uses `rg`, else `git grep`, else `grep`.
 - **Files**: a file tree with Material icons, read ahead so folders open at once, on this computer or another machine.
   - Selection as in VS Code: click, Ctrl-click and Shift-click.
   - A right-click menu after VS Code's Explorer: new file or folder, rename, cut, copy, paste, duplicate, copy path, reveal, open in terminal, and delete to the Recycle Bin or trash. Several selected rows act together.
@@ -37,6 +38,10 @@ Thanks to [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3), w
 - CSV and TSV as a table.
 - Pictures, from other machines too.
 - Code with highlighting. Files that aren't UTF-8 are read as CP949.
+- **Editing**: type in Source and save with `ctrl-s`, on this computer or another machine. A `●` after the name marks unsaved changes, and closing asks Save, Discard or Cancel.
+  - A file an agent changes reloads by itself. With unsaved changes, a `⚠` shows instead: click it for Reload from disk, or `ctrl-s` to save yours over it.
+  - A window with unsaved changes isn't reused: the next file opens in its own.
+  - Files read as CP949 and files over 1 MB stay read only.
 - **HTML pages as Chrome draws them**: the Page mode runs a headless Chrome, Edge, Chromium or Brave and shows the whole page as a picture, CSS, JavaScript and fonts included. The page is served from its folder, so `fetch()` works. Open in browser uses the same server, tunneled over ssh for another machine.
 
 **Ctrl+P: open what an agent printed**
@@ -74,12 +79,16 @@ Copy `layouts/`, `mods/` and `t3-common/` into `~/.config/herdr-app/`, merge `ke
 | `ctrl-w`, `ctrl-shift-w`, `cmd-w` | Closes the tab, asking first if a program is running; the last tab closes its space. `ctrl-w` no longer deletes a word in the shell |
 | `ctrl-shift-x`, `cmd-shift-w` | Closes the pane, asking first if a program is running |
 | `ctrl-shift-g`, `cmd-shift-g` | Shows or hides the right panel |
+| `ctrl-shift-f`, `cmd-shift-f` | Search in the right panel. It takes `ctrl-shift-f` from Herdr's find in the terminal, which moves to `ctrl-alt-shift-f` |
+| `ctrl-s`, `cmd-s` | Saves the file in the viewer |
 
 ## What it runs
 
 - Spaces and Inbox: read-only `git status`, `git rev-parse`, `git rev-list` and `git ls-files` in your spaces' folders, and `hc label` on agents.
 - Files: `sh` here and on other machines, PowerShell on Windows. Page mode runs a headless browser with a fresh profile it deletes after. Open in browser starts `python -m http.server` bound to 127.0.0.1, and `ssh -L` for another machine.
 - Ctrl+P: `hc read` of the focused terminal.
+- Search: `rg`, `git grep` or `grep` in the repository, on its machine.
+- Saving on another machine: `sh` there, with `mktemp`, `printf`, `base64` and `cat`.
 - GitHub and Worktrees: `gh`. Ports: `ss` or `Get-NetTCPConnection`, and `ssh -L` when you forward one.
 - The GitHub panel's agent briefs ask the agent to report in Korean. Change it in `mods/github/brief.js`.
 

@@ -242,7 +242,7 @@ export default class Files extends View {
   }
 
   render(cx) {
-    if (this.part) return this.part.render();
+    if (this.part) return this.part.render(cx);
     if (key() !== this.context?.key) this.refresh(cx);
     this.hear(cx);
     const c = shared(CLIP);
