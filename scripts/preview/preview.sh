@@ -1,7 +1,8 @@
 #!/bin/sh
 # preview.png from a made-up scene, apart from your own Herdr: its own core, app home, HOME and projects. Windows, Git Bash.
 #   sh scripts/preview/preview.sh up       build it in $DEMO (default C:/avery) and open its window
-#   sh scripts/preview/preview.sh scene    play the scene and save preview.png at the repo's top
+#   sh scripts/preview/preview.sh scene    play the scene and shoot the poster's pieces to $DEMO/.stage/shots
+#   sh scripts/preview/preview.sh poster   lay the pieces out with poster.html and write preview.png, Chrome at 2x, Geist from npm
 #   sh scripts/preview/preview.sh do …     run anything inside it: `preview.sh do herdr-app status`
 #   sh scripts/preview/preview.sh down     close its window, stop its core and delete $DEMO
 # Nothing of yours goes in: the agents are stand-ins (fake-agent.mjs) and the projects are made here.
@@ -55,6 +56,9 @@ app_home() {
   mkdir -p "$A/themes" "$A/mods/demo-stage" "$S/gh"
   cp -r "$src/layouts" "$src/mods" "$src/t3-common" "$src/keys.json" "$A/"
   curl -fsSL https://raw.githubusercontent.com/JinJieBeWater/herdr-t3/main/extras/themes/herdr-t3.json -o "$A/themes/herdr-t3.json"
+  # The Inbox's hover cards off in this copy: the window's idea of the pointer goes stale and leaves one over the shot.
+  sed -i 's/^export function detailsFor(view, key, cx) {$/export function detailsFor(view, key, cx) { key = null;/' "$A/mods/t3-inbox/details.js"
+  grep -q 'key = null;' "$A/mods/t3-inbox/details.js" || { echo "t3-inbox/details.js changed: update preview.sh" >&2; exit 1; }
   cp "$here/stage-main.js" "$A/mods/demo-stage/main.js"; echo '{ "place": "none", "title": "Demo stage" }' > "$A/mods/demo-stage/mod.json"
   # The stagehand in a 0px block.
   python - "$(mixed "$A/layouts/herdr-t3.json")" <<'PY'
@@ -67,19 +71,22 @@ walk(L); json.dump(L, open(p, "w", encoding="utf-8"), indent=2)
 PY
   v=$(herdr-app --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
   printf '{"last_run":"%s","presented":["%s"]}' "$v" "$v" > "$A/update-notes.json"
-  printf '{ "appearance": "dark", "theme": "herdr-t3", "font": "JetBrains Mono", "font_size": 12, "ui_font": "Geist", "zoom": 1,\n  "minimum_contrast": 3, "sounds": { "enabled": false }, "telemetry": false }\n' > "$A/settings.json"
+  printf '{ "appearance": "dark", "theme": "herdr-t3", "font": "JetBrains Mono", "font_size": 12, "ui_font": "Geist", "zoom": 1.5,\n  "minimum_contrast": 3, "sounds": { "enabled": false }, "telemetry": false }\n' > "$A/settings.json"
   printf '{ "frame.welcomed": "finished", "layout": "herdr-t3",\n  "t3-actions": { "last": "dev", "list": [\n    { "id": "dev", "name": "Dev server", "command": "npm run dev", "icon": "play", "place": "tab" },\n    { "id": "test", "name": "Test", "command": "npm test", "icon": "test", "place": "down" } ] } }\n' > "$A/shared.json"
-  # 1600x1000, on the screen your own window is on.
+  # 2400x1500 at zoom 1.5: the layout of a 1600x1000 window, at the poster's pixels. On the screen your own window is on.
   python - "$real_app/window.json" "$(mixed "$A/window.json")" <<'PY'
 import json, sys
 try: w = json.load(open(sys.argv[1]))
 except Exception: w = {}
 b = w.get("bounds", [100, 100, 0, 0])
-json.dump({"state": "windowed", "bounds": [b[0], b[1], 1600.0, 1000.0], **({"display": w["display"]} if "display" in w else {})}, open(sys.argv[2], "w"))
+json.dump({"state": "windowed", "bounds": [b[0], b[1], 2400.0, 1500.0], **({"display": w["display"]} if "display" in w else {})}, open(sys.argv[2], "w"))
 PY
 }
 
+# The pointer out of the way first: a window opened under it shows a hover card that no later shot loses.
+cursor_away() { powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(0,0)"; }
 open_app() {
+  cursor_away
   exe=$(mixed "$(command -v herdr-app)")
   case $exe in *.exe) ;; *) exe=$exe.exe ;; esac
   demo powershell -NoProfile -Command "(Start-Process -FilePath '$exe' -WorkingDirectory '$(win "$H")' -PassThru).Id" | tr -d '\r' > "$S/app.pid"
@@ -121,10 +128,27 @@ scene() {
   demo herdr-app do layout.show '{"id":"panel"}' >/dev/null
   demo herdr-app do layout.select '{"stack":"panel-body","child":"files"}' >/dev/null
   demo herdr-app do "demo-stage.view:430|330|$(mixed "$C/forno-lume")|src/pages/week.html" >/dev/null
-  # The Page mode's browser, and the Inbox's git counts.
+  # The Page mode's browser, and the Inbox's git counts. Then the poster's three pieces.
   sleep 12
-  out=${1:-$src/preview.png}
-  demo herdr-app shot "$(mixed "$out")"
+  out=${1:-$S/shots}; mkdir -p "$out"
+  demo herdr-app shot "$(mixed "$out/viewer.png")" >/dev/null
+  demo herdr-app do mod.open '{"name":"t3-spotlight"}' >/dev/null; sleep 4
+  demo herdr-app shot "$(mixed "$out/spotlight.png")" >/dev/null
+  demo herdr-app do layout.select '{"stack":"panel-body","child":"changes"}' >/dev/null; sleep 4
+  demo herdr-app shot "$(mixed "$out/changes.png")" >/dev/null
+  echo "$out"
+}
+
+poster() {
+  shots=${1:-$S/shots} w=$(mktemp -d)
+  cp "$here/poster.html" "$w/"; cp -r "$shots" "$w/shots"; mkdir "$w/fonts"
+  (cd "$w" && npm pack geist --silent >/dev/null && tar -xzf geist-*.tgz &&
+    cp package/dist/fonts/geist-sans/Geist-Variable.woff2 package/dist/fonts/geist-mono/GeistMono-Variable.woff2 fonts/)
+  chrome=${CHROME_PATH:-}
+  for c in "C:/Program Files/Google/Chrome/Application/chrome.exe" "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"; do
+    [ -n "$chrome" ] || { [ -f "$c" ] && chrome=$c; }; done
+  "$chrome" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 --window-size=1200,750     --allow-file-access-from-files --virtual-time-budget=3000 --user-data-dir="$(win "$w/profile")"     --screenshot="$(win "$src/preview.png")" "file:///$(mixed "$w/poster.html")" >/dev/null 2>&1
+  rm -rf "$w"; echo "$src/preview.png"
 }
 
 down() {
@@ -139,7 +163,8 @@ down() {
 case ${1-} in
   up) up ;;
   scene) shift; scene "$@" ;;
+  poster) shift; poster "$@" ;;
   do) shift; demo "$@" ;;
   down) down ;;
-  *) sed -n 2,7p "$0" >&2; exit 1 ;;
+  *) sed -n 2,8p "$0" >&2; exit 1 ;;
 esac

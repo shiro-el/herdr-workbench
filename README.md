@@ -83,7 +83,7 @@ Copy `layouts/`, `mods/` and `t3-common/` into `~/.config/herdr-app/`, merge `ke
 
 ## Preview picture
 
-`sh scripts/preview/preview.sh up`, then `scene`, then `down` rebuilds `preview.png` on Windows from made-up projects and stand-in agents, in a Herdr window with its own core and home.
+`sh scripts/preview/preview.sh up`, `scene`, `poster`, then `down` rebuilds `preview.png` on Windows. `scene` shoots made-up projects and stand-in agents in a Herdr window with its own core and home, and `poster` lays three pieces of those shots out with `scripts/preview/poster.html`.
 
 ## License
 

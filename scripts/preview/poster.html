@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- The gallery cover: pieces of preview.sh's shots (2400 px wide, zoom 1.5) on one card. poster.sh renders it at 2400x1500.
+     A piece goes by its pixels in the shot, so a shot taken again may need its pieces moved. -->
+<meta charset="utf-8">
+<style>
+@font-face { font-family: Geist; src: url(fonts/Geist-Variable.woff2); font-weight: 100 900; }
+@font-face { font-family: Geist Mono; src: url(fonts/GeistMono-Variable.woff2); font-weight: 100 900; }
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1200px; height: 750px; overflow: hidden; background: #111113; }
+#poster { position: absolute; inset: 0; overflow: hidden; color: #f2efe9; font-family: Geist; --a: #d0643a;
+  background:
+    radial-gradient(700px 480px at 82% 58%, rgba(208, 100, 58, .16), transparent 70%),
+    linear-gradient(180deg, #151517, #0f0f11); }
+.kicker { position: absolute; left: 60px; top: 58px; font: 500 14px "Geist Mono"; letter-spacing: .12em; color: var(--a); }
+h1 { position: absolute; left: 57px; top: 86px; font-size: 66px; line-height: 1.02; font-weight: 650; letter-spacing: -.035em; }
+h1 em { font-style: normal; color: var(--a); }
+.sub { position: absolute; left: 60px; top: 238px; width: 380px; font-size: 19px; line-height: 1.4; color: #a9a59d; }
+.crop { position: absolute; background-repeat: no-repeat; border-radius: 12px; border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 28px 70px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.45); }
+.lift { border-color: rgba(208, 100, 58, .7); box-shadow: 0 30px 80px rgba(0,0,0,.75), 0 0 46px rgba(208, 100, 58, .28); }
+.note { position: absolute; font-size: 15px; line-height: 1.3; font-weight: 600; color: #f2efe9; }
+.note small { display: block; margin-top: 2px; font-size: 13px; font-weight: 400; color: #8f8b84; }
+.note::before { content: ""; position: absolute; left: -20px; top: 9px; width: 12px; height: 2px; background: var(--a); }
+</style>
+<div id="poster"></div>
+<script>
+const P = document.getElementById("poster"), W = 2400, H = 1452;
+// A piece of a shot: x, y, w, h in the shot's pixels, drawn cssW wide at (left, top).
+function piece(file, { x, y, w, h, left, top, cssW, cls = "" }) {
+  const s = cssW / w, el = document.createElement("div");
+  el.className = "crop " + cls;
+  el.style.cssText = `left:${left}px;top:${top}px;width:${cssW}px;height:${h * s}px;background-image:url(shots/${file});` +
+    `background-size:${W * s}px ${H * s}px;background-position:${-x * s}px ${-y * s}px;`;
+  P.append(el);
+  return el;
+}
+const text = (tag, cls, html, style = "") => { const el = document.createElement(tag); el.className = cls; el.innerHTML = html; el.style.cssText = style; P.append(el); };
+
+text("div", "kicker", "HERDR WORKBENCH");
+text("h1", "", "Open what your<br>agents <em>print.</em>");
+text("div", "sub", "Files, git and the page itself beside every agent, on any machine. Ctrl+P opens any path or link on screen.");
+
+// The Changes panel: branch, push, what changed.
+piece("changes.png", { x: 1820, y: 114, w: 568, h: 252, left: 60, top: 404, cssW: 330 });
+text("div", "note", "Changes, GitHub, worktrees<small>in a panel beside the agent</small>", "left: 80px; top: 566px;");
+// The viewer on Page: the agent's HTML as Chrome draws it.
+piece("viewer.png", { x: 431, y: 331, w: 1170, h: 838, left: 610, top: 232, cssW: 550 });
+text("div", "note", "Page mode<small>the agent's HTML, drawn by Chrome</small>", "left: 630px; top: 652px;");
+// Ctrl+P, lifted over it: the paths and links the agent just printed.
+piece("spotlight.png", { x: 720, y: 102, w: 960, h: 450, left: 585, top: 44, cssW: 440, cls: "lift" });
+text("div", "note", "Ctrl+P<small>paths and links<br>on screen</small>", "left: 1062px; top: 64px;");
+</script>
