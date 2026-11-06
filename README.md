@@ -2,7 +2,7 @@
 
 A workbench layout for [Herdr App](https://herdr.dev): your agents in one Inbox on the left, their terminals in the middle, and on the right a panel with files, git, GitHub, worktrees, ports and the machine they run on. Files open in floating viewers that draw Markdown, tables, pictures and whole web pages. Ctrl+P opens any path or link an agent just printed. Works on Windows, macOS and Linux, and on your other machines over ssh.
 
-![Herdr Workbench](https://raw.githubusercontent.com/shiro-el/herdr-workbench/feb4fe8/preview.png)
+![Herdr Workbench](https://raw.githubusercontent.com/shiro-el/herdr-workbench/a0e89c5/preview.png)
 
 Thanks to [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3), which this layout is built on, and to [alarboulletmarin/herdr-github](https://github.com/alarboulletmarin/herdr-github) for the Changes and GitHub panels.
 
