@@ -7,7 +7,7 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { hc, spaces, focused, panes, theme, props, closeOverlay, openOverlay, run, home } from "herdr";
 import { slashes, openExternal, reveal, revealLabel } from "./common/platform.js";
-import { resolve, parentOf, nameOf, join, under, isAbsolute } from "./common/paths.js";
+import { resolve, parentOf, nameOf, join, under, isAbsolute, fromFileUrl } from "./common/paths.js";
 import { stat, list as listDir, fold } from "./common/fsx.js";
 
 const HANGUL_TAIL = /[ㄱ-ㆎ가-힣]+$/; // a Hangul particle glued to the end of a path
@@ -37,6 +37,9 @@ export function harvest(text) {
   const found = [];
   for (const raw of text.split(/[\s"'`<>()[\]{}|,;*]+/)) {
     if (raw.length < 3 || raw.length > 500) continue;
+    // A file:// link is the file it names.
+    const file = /file:\/\/\S+/i.exec(raw)?.[0], named = file && fromFileUrl(clean(file));
+    if (named) { found.push({ kind: "path", text: named }); continue; }
     const url = /https?:\/\/\S+/i.exec(raw)?.[0];
     if (url) { found.push({ kind: "url", text: clean(clean(url).replace(HANGUL_TAIL, "")) }); continue; }
     const t = clean(raw), bare = clean(t.replace(HANGUL_TAIL, ""));
@@ -138,7 +141,7 @@ export default class Spotlight extends View {
   }
 
   async rowsFor(q) {
-    const { on } = this.ctx, text = q.trim(), low = fold(text);
+    const { on } = this.ctx, typed = q.trim(), text = fromFileUrl(typed) ?? typed, low = fold(text);
     const recent = this.recent.filter((r) => !low || fold(r.label).includes(low) || fold(r.path ?? r.url).includes(low));
     if (!text) return recent;
     const top = [], url = /^https?:\/\//i.test(text) ? text : null, domain = url ? null : asUrl(text);

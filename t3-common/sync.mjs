@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url)), mods = join(here, "..", "mods");
 const FILES = ["platform.js", "fsx.js", "paths.js", "fsq.mjs"];
-const MODS = ["t3-files", "t3-spotlight"];
+const MODS = ["t3-files", "t3-spotlight", "t3-new-menu"];
 const HEAD = "// Copied from ~/.config/herdr-app/t3-common by sync.mjs: edit it there.\n";
 const check = process.argv.includes("--check");
 

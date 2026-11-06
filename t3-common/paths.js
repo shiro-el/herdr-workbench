@@ -40,6 +40,17 @@ export function parentOf(p) {
   const up = p.slice(0, i);
   return /^[A-Za-z]:$/.test(up) ? up + "/" : up;
 }
+/**
+ * The path a file:// URL names, its %xx decoded: "file:///C:/a%20b" is "C:/a b", "file://localhost/x" is "/x".
+ * null for anything else, and for another host's file.
+ */
+export function fromFileUrl(s) {
+  const m = /^file:\/\/(?:localhost)?(\/[^?#]*)/i.exec(String(s).trim());
+  if (!m) return null;
+  let p;
+  try { p = decodeURIComponent(m[1]); } catch { p = m[1]; }
+  return /^\/[A-Za-z]:\//.test(p) ? p.slice(1) : p;
+}
 export const nameOf = (p) => p.slice(p.lastIndexOf("/") + 1);
 export const join = (dir, name) => (dir.endsWith("/") ? dir + name : `${dir}/${name}`);
 /** `path` as relative to `root`, or null when it isn't under it. Windows here ignores case. */

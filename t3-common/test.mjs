@@ -84,6 +84,8 @@ eq("python", [["windows", null], ["windows", "vps"], ["macos", null], ["linux", 
 }
 
 // ── paths.js ──
+eq("file urls", ["file:///home/shiro/a%20b/r.html", "file:///C:/x/%ED%95%9C.md", "file://localhost/srv/x", "file://host/x", "https://a.b"].map(X.fromFileUrl),
+  ["/home/shiro/a b/r.html", "C:/x/한.md", "/srv/x", null, null]);
 T.os = "windows"; T.home = "C:\\Users\\me";
 eq("resolve windows", ["~/a", "/c/x/y", "C:\\x\\..\\y", "b.ts:12:3", "c:/"].map((s) => X.resolve(s, { cwd: "C:/w", on: null })),
   ["C:/Users/me/a", "C:/x/y", "C:/y", "C:/w/b.ts", "C:/"]);

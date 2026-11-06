@@ -12,6 +12,13 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, Popover, Popup, InputState, Input } from "gpui-base";
 import { agents, terminals, panes, spaces, focused, run, hc, exec, notify, theme, shared, setShared, setAgentOrder, props, nextCommand, settings, layout, openOverlay, closeOverlay } from "herdr";
+// New space through t3-new-menu, which asks the machine, then the folder on it. `machine` given (null: this
+// computer) skips to its folders. mod.open takes no props, so where to start goes by shared state.
+function newSpace(machine) {
+  setShared("t3-new-menu.start", { machine, at: Date.now() });
+  run("mod.open", { name: "t3-new-menu" });
+}
+
 import { modStatus, namer, programOf } from "./name.js";
 import { kidStatus, descendants, ownStatus, treeStatus } from "./tree.js";
 import { projectMark } from "./project.js";
@@ -1287,7 +1294,7 @@ export default class Inbox extends View {
         .child(svg("mods/workspace-chrome/search.svg").size(14).flex_none().text_color(lit("inbox-search", t.dim)))
         .child(div().child("Search")))
       .child(tip(this.scopeOpen ? null : this.hot, t, "inbox-scope", "Filter by space", filter, { hint: "Shift+click to pick several", below: true }))
-      .child(tool("inbox-new-space", "New space", "folder-plus", () => run("space.new"), { action: "space.new" }))
+      .child(tool("inbox-new-space", "New space", "folder-plus", () => newSpace(), { action: "space.new" }))
       // The layout passes its own menu; docked alone, the shipped one.
       .child(tool("inbox-new-tab", "New tab", "square-pen", (_e, cx) => { this.hot = null; run("mod.open", { name: props()?.newMenu ?? "new-menu" }); cx.notify(); }));
 

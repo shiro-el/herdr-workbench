@@ -3,6 +3,8 @@
     "ctrl-p": "mod.open:t3-spotlight"
   },
   "layout:herdr-t3": {
+    "ctrl-shift-n": "t3-tabs.new-space",
+    "cmd-shift-n": "t3-tabs.new-space",
     "cmd-shift-b": "t3-chrome.sidebar",
     "ctrl-shift-b": "t3-chrome.sidebar",
     "cmd-]": "t3-chrome.next",
@@ -10,6 +12,7 @@
     "alt-down": "t3-chrome.next",
     "alt-up": "t3-chrome.prev",
     "cmd-w": "t3-tabs.close-tab",
+    "ctrl-w": "t3-tabs.close-tab",
     "ctrl-shift-w": "t3-tabs.close-tab",
     "cmd-shift-w": "t3-tabs.close-pane",
     "ctrl-shift-x": "t3-tabs.close-pane",

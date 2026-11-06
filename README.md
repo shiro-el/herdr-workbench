@@ -13,6 +13,7 @@ Thanks to [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3), w
 - **Sub-agents** show under their parent as a tree, open by default. A chevron folds them, and blocked ones still show while folded. Clicking one peeks at it.
 - **Lists**: Spaces and Agents, one key away from Inbox. Spaces fold worktrees under their checkout and group by machine. A long space name uses the whole row.
 - **Space icons**: the repo's own favicon, icon or logo, found among the files git knows about, shallowest first. To pick one yourself, add `{ "<repo folder>": "<path in the repo>" }` to `~/.config/herdr-app/t3-icons.json`. With none, a folder in the space's color.
+- **New space** on any machine in any folder: pick the machine, then type or step through its folders from its home. On this computer, Browse… opens the system picker too.
 - The same names and status marks everywhere: a spinner while working, `!` when blocked, a dot when done.
 
 **Tabs and panes**
@@ -41,7 +42,7 @@ Thanks to [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3), w
 **Ctrl+P: open what an agent printed**
 - A popup that lists the links and paths on the focused terminal's screen, newest first, keeping only paths that exist.
 - Paths resolve against the terminal's folder and machine. A relative path that isn't there is also tried under the folders of other paths on the same screen, where agents usually work.
-- Type instead: `src/main.ts:42`, `~/notes`, `/c/Users/...`, `https://...`, or just `google.com` and `localhost:5173`.
+- Type instead: `src/main.ts:42`, `~/notes`, `/c/Users/...`, `file:///...`, `https://...`, or just `google.com` and `localhost:5173`.
 - A file opens in the viewer. A link opens in the viewer's Page mode or in the browser. A folder lists what's in it, with Open a terminal here and Reveal.
 - ↑/↓ to pick, Enter to open, Tab to complete, Esc to close.
 
@@ -49,7 +50,7 @@ Thanks to [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3), w
 
 Copy `layouts/`, `mods/` and `t3-common/` into `~/.config/herdr-app/`, merge `keys.json` into yours, then switch to the layout with `ctrl-shift-l` or `herdr-app do layout.switch --name herdr-t3`. Or ask your Herdr agent to add this repo.
 
-`t3-common/` holds the code that differs by OS, shared by `t3-files` and `t3-spotlight`. A mod can only import its own files, so each of them carries a copy in `common/`. The file tree copies `t3-common/` into both when it starts, so edit `t3-common/` and never the copies. Run `node t3-common/test.mjs [machine]` to test it.
+`t3-common/` holds the code that differs by OS, shared by `t3-files`, `t3-spotlight` and `t3-new-menu`. A mod can only import its own files, so each carries a copy in `common/`. The file tree copies `t3-common/` into them when it starts, so edit `t3-common/` and never the copies. Run `node t3-common/test.mjs [machine]` to test it.
 
 ### What each OS needs
 
@@ -67,9 +68,10 @@ Copy `layouts/`, `mods/` and `t3-common/` into `~/.config/herdr-app/`, merge `ke
 | Key | Does |
 | --- | --- |
 | `ctrl-p` | Ctrl+P popup. It takes Ctrl+P from terminal programs; on macOS bind `cmd-p` instead |
+| `ctrl-shift-n`, `cmd-shift-n` | New space: the machine, then the folder on it |
 | `ctrl-shift-b`, `cmd-shift-b` | Switches the sidebar between Inbox and Lists |
 | `alt-down` / `alt-up`, `cmd-]` / `cmd-[` | Next or previous agent |
-| `ctrl-shift-w`, `cmd-w` | Closes the tab, asking first if a program is running |
+| `ctrl-w`, `ctrl-shift-w`, `cmd-w` | Closes the tab, asking first if a program is running; the last tab closes its space. `ctrl-w` no longer deletes a word in the shell |
 | `ctrl-shift-x`, `cmd-shift-w` | Closes the pane, asking first if a program is running |
 | `ctrl-shift-g`, `cmd-shift-g` | Shows or hides the right panel |
 
