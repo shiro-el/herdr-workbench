@@ -495,10 +495,24 @@ export default class Inbox extends View {
     if (find(layout())?.active !== "lists") setAgentOrder([...pinned, ...out, ...work, ...nap, ...put].filter((a) => !a.mod).map((a) => a.address));
 
     const title = namer();
+    // Local change: a click quiets its card (`this.quiet`) until the pointer really leaves it or reaches another row.
+    // The redraw after a click can report the pointer entering the same row again, which reopened the card at once.
     const hover = (a) => (on, cx) => {
-      if (on) { this.hovered = a.address; this.detailsFor(a.address, cx); }
-      else if (this.hovered === a.address) { this.hovered = null; this.detailsFor(null, cx); }
+      const q = this.quiet;
+      if (on) {
+        this.hovered = a.address;
+        if (q && q.key !== a.address) this.quiet = null;
+        if (!this.quiet) this.detailsFor(a.address, cx);
+      } else if (this.hovered === a.address) {
+        this.hovered = null;
+        if (q?.key === a.address && Date.now() - q.at > 300) this.quiet = null;
+        this.detailsFor(null, cx);
+      }
       cx.notify();
+    };
+    const hush = (a, cx) => {
+      this.quiet = { key: a.address, at: Date.now() };
+      this.detailsFor(null, cx);
     };
     // A button's icon and text brighten together: a hover style reaches the text but not the svg, so it's state.
     const glow = (id) => (on, cx) => {
@@ -704,7 +718,7 @@ export default class Inbox extends View {
       if (justDropped() || this.hot === `snooze-${a.address}`) return;
       go(a);
       // As a T3 tooltip, a click takes its card down until the pointer comes back.
-      this.detailsFor(null, cx);
+      hush(a, cx);
       cx.notify();
     };
     // Says whether it moved on to another agent.
@@ -823,7 +837,9 @@ export default class Inbox extends View {
         .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).flex_none().text_color(lit(id, t.dim))), { delay });
     };
     // One sub-agent: its tree lines, program icon, name and state, 22px; a click peeks at it, as t3-agents.
-    const kidRow = (s) => {
+    // Over a sub-agent the card's details step aside (a lit control speaks for itself); its click takes them down, or
+    // they'd cover the peek it opens.
+    const kidRow = (s, a) => {
       const k = s.t, st = kidStatus(k, listed), pic = icon(k.program, 12, t.muted);
       const on = k.address === (f?.agent ?? f?.terminal);
       const name = k.name || k.template || k.program?.name || k.address;
@@ -835,7 +851,8 @@ export default class Inbox extends View {
         .text_size(12).role("button").accessibility_label(name)
         .when(on, (el) => el.bg(t.selected)).when(!on, (el) => el.hover((x) => x.bg(t.selected)))
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-        .on_click((_e, cx) => { cx.stop_propagation(); run("terminal.peek", { terminal: k.address }); })
+        .on_hover(glow(`kid-${k.address}`))
+        .on_click((_e, cx) => { cx.stop_propagation(); hush(a, cx); run("terminal.peek", { terminal: k.address }); cx.notify(); })
         .children(s.lines.flatMap((l, j) => [
           l === "│" || l === "├" ? div().absolute().left(7.25 + 14 * j).top(0).bottom(0).w(1.5).bg(t.input) : null,
           l === "├" || l === "└" ? div().absolute().left(7.25 + 14 * j).top(-4).h(15).w(6.75).border_l(1.5).border_b(1.5).rounded_bl(5).border_color(t.input) : null,
@@ -1003,7 +1020,7 @@ export default class Inbox extends View {
         .when(!ghost && tree.length > 0, (el) => {
           const shown = kidsOpen(a) ? tree : tree.filter((s) => kidStatus(s.t, listed) === "blocked")
             .map((s, j, xs) => ({ ...s, depth: 1, lines: [j === xs.length - 1 ? "└" : "├"] }));
-          return shown.length ? el.child(v_flex().mt(2).children(shown.map((s) => kidRow(s)))) : el;
+          return shown.length ? el.child(v_flex().mt(2).children(shown.map((s) => kidRow(s, a)))) : el;
         });
     };
 
@@ -1321,6 +1338,7 @@ export default class Inbox extends View {
       // label or the Settled shelf sit there) it lands where the badge says, as T3 keeps the last target past the
       // list's ends; off a side it goes back.
       .on_hover((on, cx) => {
+        if (!on) this.quiet = null;
         if (on || !(this.drag || this.sweep || this.back)) return;
         const p = (this.drag ?? this.sweep)?.last, w = this.width ?? Infinity, h = this.height ?? Infinity;
         const side = !p || Math.min(p.x, w - p.x) < Math.min(p.y, h - p.y);
