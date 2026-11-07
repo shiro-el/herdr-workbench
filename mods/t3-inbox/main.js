@@ -15,7 +15,8 @@ import { agents, terminals, panes, spaces, focused, run, hc, exec, notify, theme
 // New space through t3-new-menu, which asks the machine, then the folder on it. `machine` given (null: this
 // computer) skips to its folders. mod.open takes no props, so where to start goes by shared state.
 function newSpace(machine) {
-  setShared("t3-new-menu.start", { machine, at: Date.now() });
+  // Shared state keeps no undefined (it comes back null, this computer): `pick` says to ask for the machine.
+  setShared("t3-new-menu.start", { machine: machine ?? null, pick: machine === undefined, at: Date.now() });
   run("mod.open", { name: "t3-new-menu" });
 }
 

@@ -106,7 +106,7 @@ export default class Tabs extends View {
           run("layout.select", { stack: "panel-body", child: "search" });
           setShared("t3-panel.search-focus", Date.now());
         }
-        else if (command === "new-space") { setShared("t3-new-menu.start", { machine: undefined, at: Date.now() }); run("mod.open", { name: "t3-new-menu" }); }
+        else if (command === "new-space") { setShared("t3-new-menu.start", { machine: null, pick: true, at: Date.now() }); run("mod.open", { name: "t3-new-menu" }); }
         else if (command === "close-pane") await this.closePane(focused()?.pane, cx);
         else if (command.startsWith("close-tab:")) await this.closeTab(command.slice("close-tab:".length), cx);
         else if (command.startsWith("close-pane:")) await this.closePane(command.slice("close-pane:".length), cx);

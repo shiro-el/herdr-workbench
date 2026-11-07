@@ -30,7 +30,8 @@ const find = (node, id) => {
 let spaces, machines;
 const calls = [], scrolled = [];
 const pending = [], store = {};
-const cx = { notify() {}, stop_propagation() {}, spawn: (f) => { pending.push(f(cx)); } };
+const timers = [];
+const cx = { notify() {}, stop_propagation() {}, spawn: (f) => { pending.push(f(cx)); }, timer: { after: (ms, f) => { timers.push(f); return { cancel() {} }; } } };
 const settle = async () => { while (pending.length) await pending.shift(); };
 // Folders on each machine: kvm's home is /home/kvm, this computer's /home/me.
 const disk = { "/home/kvm": ["code", "notes", ".cache", "a.txt"], "/home/kvm/code": ["shop", "api"], "/home/me": ["work"] };
@@ -158,6 +159,20 @@ assert.equal(m.folderInput.value(), "/home/kvm/");
 assert.equal(store["t3-new-menu.start"], null, "used once");
 store["t3-new-menu.start"] = { at: Date.now() };
 assert.equal(open().mode, "machines");
+// Shared state hands back an undefined machine as null (this computer): `pick` still asks for the machine.
+store["t3-new-menu.start"] = { machine: null, pick: true, at: Date.now() };
+timers.length = 0;
+m = open();
+assert.equal(m.mode, "machines");
+timers.forEach((f) => f(cx));
+assert.equal(m.mode, "machines", "with another machine, the step stays");
+machines = [{ name: null, layout: "ready" }];
+store["t3-new-menu.start"] = { machine: null, pick: true, at: Date.now() };
+timers.length = 0;
+m = open();
+timers.forEach((f) => f(cx));
+assert.equal(m.mode, "folder", "with only this computer, on to its folders");
+machines = [{ name: null, layout: "ready" }, { name: "kvm", layout: "ready" }];
 store["t3-new-menu.start"] = { machine: "kvm", at: Date.now() - 60000 };
 assert.equal(open().mode, "spaces", "an old one is ignored");
 console.log("ok new menu");

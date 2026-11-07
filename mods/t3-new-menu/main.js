@@ -69,7 +69,17 @@ export default class NewMenu extends View {
     if (start) {
       setShared("t3-new-menu.start", null);
       if (Date.now() - start.at < 3000) {
-        if (start.machine === undefined) this.newSpace(cx);
+        // `pick`: ask for the machine (an undefined machine comes back from shared state as null, this computer).
+        // Show the machines, in case machines() hasn't come in this soon; with only this computer a moment later,
+        // go on to its folders.
+        if (start.pick || start.machine === undefined) {
+          this.show("machines", cx);
+          cx.timer.after(600, (cx) => {
+            if (this.mode !== "machines" || this.filter) return;
+            const rows = this.machineRows();
+            if (rows.length === 1) this.openFolder(rows[0].machine, cx);
+          });
+        }
         else this.openFolder(start.machine, cx);
       }
     }
@@ -264,15 +274,16 @@ export default class NewMenu extends View {
         .when(mode === "folder" && Boolean(w?.base) && (w.err || w.dirs === null), el => el.child(div().px(8).pt(4).text_size(12).text_color(t.dim)
           .child(w.err ?? "Reading…"))))
       .child(h_flex().flex_none().px(16).py(8).gap(12).items_center().justify_between().bg(t.foreground + "06").text_size(12).font_medium().text_color(t.muted)
-        .child(h_flex().gap(12).items_center()
+        // The hints take the room left and give way; the buttons sit straight in this row. Wrapped in a row of their
+        // own they measured about 0 wide and hung off the popup's right edge, showing only "Br".
+        .child(h_flex().flex_1().min_w(0).overflow_hidden().gap(12).items_center()
           .child(hint("↑ ↓", "Navigate"))
           .child(hint("Enter", mode === "folder" ? "Open" : mode === "machines" ? "Choose" : "New tab"))
           .when(mode === "folder", el => el.child(hint("Tab", "Into")))
           .child(hint("Esc", "Close")))
-        .when(mode === "folder", el => el.child(h_flex().gap(12).items_center()
-          .when(!w?.machine, row => row.child(footButton("new-browse", "Browse").on_click((_e, cx) => this.browse(cx)).child("Browse…")))
-          .child(footButton("new-back", "Back").on_click((_e, cx) => this.show(this.machineRows().length > 1 ? "machines" : "spaces", cx))
-            .child(this.machineRows().length > 1 ? "← Machines" : "← Spaces"))))
+        .when(mode === "folder" && !w?.machine, el => el.child(footButton("new-browse", "Browse").mr(0).on_click((_e, cx) => this.browse(cx)).child("Browse…")))
+        .when(mode === "folder", el => el.child(footButton("new-back", "Back").on_click((_e, cx) => this.show(this.machineRows().length > 1 ? "machines" : "spaces", cx))
+          .child(this.machineRows().length > 1 ? "← Machines" : "← Spaces")))
         .when(mode === "machines", el => el.child(footButton("new-back", "Back to spaces").on_click((_e, cx) => this.show("spaces", cx)).child("← Spaces")))
         .when(mode === "spaces", el => el.child(footButton("space-new", "New space").on_click((_e, cx) => this.newSpace(cx))
           .child(svg("mods/workspace-chrome/folder-plus.svg").size(14).text_color(t.muted))
