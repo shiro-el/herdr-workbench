@@ -200,9 +200,78 @@ function customView(view) {
       .child(button("custom-submit", "Snooze", true, (_e, cx) => { submitCustom(view); cx.notify(); })));
 }
 
+// Local change: a card's right-click menu, a pointer popup that is another copy of this mod (`props().cardMenu`:
+// { address, pane, tab, space, mod, kids, folded }). Folding sub-agents is the card's copy's localStorage, so the
+// menu asks for it through shared `t3-inbox.kids-toggle`. Items are [label, icon, act] or "-" (a divider).
+const MENU_ROW = 30, MENU_SEP = 9;
+function cardMenuItems(c) {
+  const sep = "-";
+  if (c.mod) return [
+    ["Open", "square", () => run("pane.focus", { pane: c.pane })],
+    sep,
+    ["Close pane", "x", () => run("pane.close", { pane: c.pane })],
+  ];
+  return [
+    ["Open", "square", () => run("agent.focus", { terminal: c.address })],
+    ["Peek", "layers", () => run("terminal.peek", { terminal: c.address })],
+    ...(c.kids ? [[c.folded ? "Expand sub-agents" : "Collapse sub-agents", c.folded ? "chevron-down" : "chevron-right",
+      () => setShared("t3-inbox.kids-toggle", { address: c.address, at: Date.now() })]] : []),
+    sep,
+    ...(c.pane ? [["Split right", "panel-right", () => run("pane.split", { direction: "right", pane: c.pane })]] : []),
+    ...(c.space ? [["New tab in space", "plus", () => run("tab.new", { space: c.space })]] : []),
+    ...(c.tab ? [["Rename tab", "square-pen", () => run("tab.rename", { id: c.tab })]] : []),
+    ...(c.space ? [["Rename space", "square-pen", () => run("space.rename", { id: c.space })]] : []),
+    sep,
+    ...(c.pane ? [["Close pane", "x", () => run("pane.close", { pane: c.pane })]] : []),
+    ...(c.tab ? [["Close tab", "x", () => run("tab.close", { id: c.tab })]] : []),
+  ];
+}
+const cardMenuHeight = (c) => cardMenuItems(c).reduce((h, it) => h + (it === "-" ? MENU_SEP : MENU_ROW), 10);
+
+function openCardMenu(a, kids, folded) {
+  const c = { address: a.address, pane: a.pane ?? null, tab: a.tab ?? null, space: a.space ?? null, mod: Boolean(a.mod), kids, folded };
+  openOverlay({ mod: "t3-inbox", kind: "popup", width: 210, height: cardMenuHeight(c), props: { cardMenu: c } });
+}
+
+function initCardMenu(view, cx) {
+  view.at = -1;
+  view.handle = cx.focus_handle();
+  view.handle.focus();
+}
+
+function cardMenuView(view) {
+  const t = theme(), c = props().cardMenu, list = cardMenuItems(c);
+  const acts = list.filter((it) => it !== "-");
+  const choose = (it) => { if (!it) return; closeOverlay(props().overlay); it[2](); };
+  let k = -1;
+  return v_flex().id("card-menu").track_focus(view.handle).size_full().p(5).bg(t.popover).text_size(12.8)
+    .on_key_down((e, cx) => {
+      if (e.key === "down") view.at = (view.at + 1) % acts.length;
+      else if (e.key === "up") view.at = (view.at <= 0 ? acts.length : view.at) - 1;
+      else if (e.key === "enter") return choose(acts[view.at]);
+      else if (e.key === "escape") return closeOverlay(props().overlay);
+      else return;
+      cx.stop_propagation();
+      cx.notify();
+    })
+    .children(list.map((it, i) => {
+      if (it === "-") return div().id(`card-menu-sep-${i}`).mx(7).my(4).h(1).flex_none().bg(t.border);
+      const n = ++k;
+      return h_flex().id(`card-menu-${n}`).h(MENU_ROW).px(8).gap(9).flex_none().rounded(7).items_center().text_color(t.foreground)
+        .role("button").accessibility_label(it[0])
+        .when(n === view.at, (el) => el.bg(t.selected)).hover((s) => s.bg(t.hover))
+        .on_click((_e, cx) => { cx.stop_propagation(); choose(it); })
+        .child(svg(`mods/workspace-chrome/${it[1]}.svg`).size(14).flex_none().text_color(t.muted))
+        .child(div().flex_1().min_w(0).truncate().child(it[0]));
+    }));
+}
+
 export default class Inbox extends View {
   init(_props, cx) {
     if (props()?.customSnooze) return initCustom(this);
+    if (props()?.cardMenu) return initCardMenu(this, cx);
+    // A card menu's fold request already made before this copy started isn't for it.
+    this.kidsToggleSeen = shared("t3-inbox.kids-toggle")?.at ?? 0;
     // Each agent's last state, when we saw it set going or come back (ms; 0: before we were watching), the turns
     // it had ended then, and for one that just stopped, when its run started.
     this.changed = JSON.parse(localStorage.getItem("changes") ?? "{}");
@@ -361,8 +430,17 @@ export default class Inbox extends View {
 
   render(cx) {
     if (props()?.customSnooze) return customView(this);
+    if (props()?.cardMenu) return cardMenuView(this);
     const t = theme(), now = Date.now();
     const runs = agents(), all = terminals(), ps = panes(), sp = spaces(), f = focused();
+    // A card menu's Collapse / Expand sub-agents (see openCardMenu).
+    const toggle = shared("t3-inbox.kids-toggle");
+    if (toggle?.at && toggle.at !== this.kidsToggleSeen) {
+      this.kidsToggleSeen = toggle.at;
+      const was = this.kidsFolded.includes(toggle.address);
+      this.kidsFolded = was ? this.kidsFolded.filter((x) => x !== toggle.address) : [...this.kidsFolded, toggle.address];
+      localStorage.setItem("kids-folded", JSON.stringify(this.kidsFolded));
+    }
     // Mod panes that ask for a card (see the top), one a tab. `pane:<id>` is their address, in t3-inbox.rows too.
     const every = [...runs, ...sp.flatMap((s) => s.tabs.flatMap((c) => {
       const p = ps.find((x) => x.tab === c.id && x.mod && programOf(x)?.inbox);
@@ -997,7 +1075,15 @@ export default class Inbox extends View {
         // A working row recedes until it's hovered or in view, as T3's.
         .when(!ghost, (el) => el.opacity(running(a) && !woke(a) && !on && !over ? 0.7 : 1).transition("opacity", MOTION));
       return (ghost ? base : row(base, a).role("button").accessibility_label(title(a)).on_hover(hover(a))
-        .on_click(open(a)).on_size_change((size) => { this.cardH = size.height; }))
+        .on_click(open(a)).on_size_change((size) => { this.cardH = size.height; })
+        // Local change: right-click opens the card's menu (cardMenuItems); its details card steps aside.
+        .on_mouse_down("right", (_e, cx) => {
+          cx.stop_propagation();
+          if (this.drag || this.sweep) return;
+          hush(a, cx);
+          openCardMenu(a, tree.length > 0, !kidsOpen(a));
+          cx.notify();
+        }))
         .when(on, (el) => el.bg(t.selected))
         .when(!on && !ghost && !dragging && !this.sweep?.moved, (el) => el.hover((s) => s.bg(t.hover)))
         // Local change: the space leads the card (no title line): 14px medium, foreground when it leads or is hovered.

@@ -237,7 +237,31 @@ export default class NewMenu extends View {
   render() {
     const t = theme(), ps = panes(), items = this.items(), mode = this.mode, w = this.where;
     const key = (label) => div().flex_none().px(5).py(1).rounded(4).bg(t.foreground + "14").text_color(t.foreground).child(label);
-    const hint = (label, what) => h_flex().gap(6).items_center().child(key(label)).child(what);
+    // Local change: each hint does what its key does when clicked (it was text only, so clicks did nothing).
+    const input = mode === "folder" ? this.folderInput : mode === "machines" ? this.machineInput : this.spaceInput;
+    const hint = (id, label, what, act) => h_flex().id(id).gap(6).px(4).py(1).ml(-4).rounded(6).items_center().flex_none()
+      .role("button").accessibility_label(what).cursor_pointer().hover(s => s.bg(t.selected).text_color(t.foreground))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => { cx.stop_propagation(); act(cx); })
+      .child(key(label)).when(Boolean(what), el => el.child(what));
+    const step = (by) => (cx) => {
+      if (items.length) {
+        this.at = (this.at + by + items.length) % items.length;
+        this.scroll.scroll_to_item(this.at);
+      }
+      input.focus();
+      cx.notify();
+    };
+    const into = (cx) => {
+      const pick = items[this.at]?.dir !== undefined ? items[this.at] : items.find(r => r.dir !== undefined);
+      if (pick) this.into(pick.dir, cx);
+      else { input.focus(); cx.notify(); }
+    };
+    const navigate = h_flex().gap(6).items_center().flex_none()
+      .child(h_flex().gap(2).items_center()
+        .child(hint("hint-up", "↑", "", step(-1)).ml(0).px(0).accessibility_label("Previous"))
+        .child(hint("hint-down", "↓", "", step(1)).ml(0).px(0).accessibility_label("Next")))
+      .child("Navigate");
     const newKey = shortcut("space.new");
     const footButton = (id, label) => h_flex().id(id).gap(6).px(6).py(2).mr(-6).rounded(6).items_center().flex_none()
       .role("button").accessibility_label(label).hover(s => s.bg(t.selected));
@@ -277,10 +301,10 @@ export default class NewMenu extends View {
         // The hints take the room left and give way; the buttons sit straight in this row. Wrapped in a row of their
         // own they measured about 0 wide and hung off the popup's right edge, showing only "Br".
         .child(h_flex().flex_1().min_w(0).overflow_hidden().gap(12).items_center()
-          .child(hint("↑ ↓", "Navigate"))
-          .child(hint("Enter", mode === "folder" ? "Open" : mode === "machines" ? "Choose" : "New tab"))
-          .when(mode === "folder", el => el.child(hint("Tab", "Into")))
-          .child(hint("Esc", "Close")))
+          .child(navigate)
+          .child(hint("hint-enter", "Enter", mode === "folder" ? "Open" : mode === "machines" ? "Choose" : "New tab", (cx) => this.choose(items[this.at], cx)))
+          .when(mode === "folder", el => el.child(hint("hint-tab", "Tab", "Into", into)))
+          .child(hint("hint-esc", "Esc", "Close", () => closeOverlay(props().overlay))))
         .when(mode === "folder" && !w?.machine, el => el.child(footButton("new-browse", "Browse").mr(0).on_click((_e, cx) => this.browse(cx)).child("Browse…")))
         .when(mode === "folder", el => el.child(footButton("new-back", "Back").on_click((_e, cx) => this.show(this.machineRows().length > 1 ? "machines" : "spaces", cx))
           .child(this.machineRows().length > 1 ? "← Machines" : "← Spaces")))

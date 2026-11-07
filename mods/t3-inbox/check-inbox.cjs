@@ -65,8 +65,12 @@ function lineOf(node, text) {
   return null;
 }
 
-function fixture() {
-  const f = { now: 1000, rows: [], terms: [], order: [], calls: [], jobs: [], timers: [], data: new Map(), pins: [], mode: "inbox", notifications: [], state: {}, labelled: [] };
+// Local change: `fixture({ flat: false })` loads main.js with its sections (Pinned, Working, Snoozed, Settled), Settle,
+// Snooze and drag back on, for the tests of those; the inbox shown runs FLAT (main.js `const FLAT = true`).
+// `props`: this copy's props (a card menu); `state`: shared state before init.
+const SECTIONS = { flat: false };
+function fixture(opts = {}) {
+  const f = { now: 1000, rows: [], terms: [], order: [], calls: [], jobs: [], timers: [], data: new Map(), pins: [], mode: "inbox", notifications: [], state: { ...opts.state }, labelled: [], opened: [], closed: [] };
   // The real Date, with its clock at f.now.
   const FakeDate = function (...args) { return args.length ? new Date(...args) : new Date(f.now); };
   FakeDate.now = () => f.now;
@@ -97,18 +101,23 @@ function fixture() {
     keys: () => [], agents: () => f.rows, terminals: () => f.terms, panes: () => [],
     spaces: () => [{ id: "s1", name: "One", tabs: [] }, { id: "s2", name: "Two", tabs: [] }],
     focused: () => ({ agent: f.rows.find((a) => a.focused)?.address }),
-    theme: () => ({}), settings: () => ({}), props: () => ({}),
+    theme: () => ({}), settings: () => ({}), props: () => opts.props ?? ({}),
     layout: () => ({ id: "sidebar-lists", active: f.mode }),
     shared: (k) => k === "agents.pins" ? f.pins : f.state[k] ?? null,
     setShared: (k, v) => { if (k === "agents.pins") f.pins = Array.from(v); else f.state[k] = v; },
     setAgentOrder: (xs) => { f.order = Array.from(xs); },
-    run: (...args) => f.calls.push(args), notify: (n) => f.notifications.push(n), openOverlay() {}, closeOverlay() {},
+    run: (...args) => f.calls.push(args), notify: (n) => f.notifications.push(n), openOverlay: (o) => { f.opened.push(o); }, closeOverlay: (id) => { f.closed.push(id); },
     hc: async (args) => { f.labelled.push(args.join(" ")); return { code: 0 }; }, nextCommand: () => new Promise(() => {}),
   };
   // tree.js, project.js, tip.js and details.js, the shared status, space-mark, hover-label and details rules, are inlined as each mod's own copies are.
   const tree = ["tree.js", "project.js", "tip.js", "details.js"].map((file) => fs.readFileSync(path.join(__dirname, file), "utf8")).join("\n")
     .replace(/^import .*;\r?\n/gm, "").replace(/export (function|const) /g, "$1 ");
-  const src = tree + fs.readFileSync(path.join(__dirname, "main.js"), "utf8")
+  let main = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  if (opts.flat !== undefined) {
+    assert.match(main, /^const FLAT = (true|false);/m, "main.js says FLAT");
+    main = main.replace(/^const FLAT = (true|false);/m, `const FLAT = ${opts.flat};`);
+  }
+  const src = tree + main
     .replace(/^import .*;\r?\n/gm, "").replace("export default class", "globalThis.Mod = class");
   const context = vm.createContext(env);
   vm.runInContext(src, context, { filename: "t3-inbox/main.js" });
@@ -161,7 +170,7 @@ function fixture() {
 }
 
 test("a quick continuation keeps its Working place, showing its real state meanwhile", () => {
-  const f = fixture(), a = f.add("A", "working", 100); f.add("B", "working", 200); f.mod.workOpen = true;
+  const f = fixture(SECTIONS), a = f.add("A", "working", 100); f.add("B", "working", 200); f.mod.workOpen = true;
   f.render(); assert.deepEqual(f.working(), ["B", "A"]);
   a.status = "done"; f.render(1100);
   assert.deepEqual(f.working(), ["B", "A"]);
@@ -171,7 +180,7 @@ test("a quick continuation keeps its Working place, showing its real state meanw
 });
 
 test("a finished run moves to Active once the grace is out; blocked moves at once", () => {
-  const f = fixture(), a = f.add("A", "working"), b = f.add("B", "working"); f.mod.workOpen = true;
+  const f = fixture(SECTIONS), a = f.add("A", "working"), b = f.add("B", "working"); f.mod.workOpen = true;
   f.render(); a.status = "idle"; f.render(1100);
   f.terms[0].turn++; f.render(2000); // the turn's end arriving late doesn't restart the grace
   f.render(3099); assert.deepEqual(f.working(), ["A", "B"]);
@@ -235,13 +244,13 @@ test("only the sidebar list in view sets agent.next order", { skip: !lists && "t
 });
 
 test("a pause for the person keeps the run's Working place", () => {
-  const f = fixture(), a = f.add("A", "working", 100); f.add("B", "working", 200); f.mod.workOpen = true;
+  const f = fixture(SECTIONS), a = f.add("A", "working", 100); f.add("B", "working", 200); f.mod.workOpen = true;
   f.render(); a.status = "blocked"; f.render(1100); assert.deepEqual(f.active(), ["A"]);
   a.status = "working"; f.render(9000); assert.deepEqual(f.working(), ["B", "A"]);
 });
 
 test("a reply while sub-agents work comes to Active; read, the run goes on from its start", () => {
-  const f = fixture(), a = f.add("A", "idle"); f.mod.workOpen = true;
+  const f = fixture(SECTIONS), a = f.add("A", "idle"); f.mod.workOpen = true;
   f.render(1000); f.terms.push({ address: "kid", parent: "A", state: "live", status: "working" });
   f.render(2000); assert.deepEqual(f.working(), ["A"]);
   a.status = "done"; f.render(3000); assert.deepEqual([f.active(), f.working()], [["A"], []]);
@@ -250,7 +259,7 @@ test("a reply while sub-agents work comes to Active; read, the run goes on from 
 });
 
 test("a run out of its grace lands on top of Active, over one that came back meanwhile", () => {
-  const f = fixture(), a = f.add("A", "working"), b = f.add("B", "working"); f.mod.workOpen = true;
+  const f = fixture(SECTIONS), a = f.add("A", "working"), b = f.add("B", "working"); f.mod.workOpen = true;
   f.render(); a.status = "idle"; f.render(1100);
   b.status = "blocked"; f.render(2000); assert.deepEqual(f.active(), ["B"]);
   f.render(3100); assert.deepEqual(f.active(), ["A", "B"]);
@@ -265,7 +274,7 @@ test("pinned agents skip the grace: unpinned right after stopping, it's in Activ
 
 test("Settle in view moves down the cards, then from the top", () => {
   const go = (focus) => {
-    const f = fixture(); f.add("A", "idle", 300); f.add("B", "idle", 200); f.add("P", "idle", 100); f.pins = ["P"];
+    const f = fixture(SECTIONS); f.add("A", "idle", 300); f.add("B", "idle", 200); f.add("P", "idle", 100); f.pins = ["P"];
     f.rows.find((a) => a.address === focus).focused = true; f.render(); assert.deepEqual(f.order, ["P", "A", "B"]);
     f.settle(); return f.calls.at(-1)[1].terminal;
   };
@@ -303,7 +312,7 @@ test("only a list with nothing in it says so, as T3's", () => {
 });
 
 test("a plain click on Settle leaves no sweep behind to swallow the next click", () => {
-  const f = fixture(), a = f.add("A", "idle", 100); f.add("B", "idle", 50); f.add("C", "idle", 30); a.focused = true;
+  const f = fixture(SECTIONS), a = f.add("A", "idle", 100); f.add("B", "idle", 50); f.add("C", "idle", 30); a.focused = true;
   f.render(); f.mod.hovered = "A"; f.render();
   f.event("settle-A", "on_mouse_down:left");
   // The button's click stops its release there: the sidebar's own mouse-up never comes.
@@ -315,76 +324,118 @@ test("a plain click on Settle leaves no sweep behind to swallow the next click",
 });
 
 test("a plain click on a settled row's undo leaves no sweep behind either", () => {
-  const f = fixture(); f.add("A"); f.terms[0].labels.settled = "500:0"; f.mod.open = true;
+  const f = fixture(SECTIONS); f.add("A"); f.terms[0].labels.settled = "500:0"; f.mod.open = true;
   f.render(); f.mod.hovered = "A"; f.render();
   f.event("unsettle-A", "on_mouse_down:left"); f.event("unsettle-A", "on_click"); f.render(1100);
   f.event("t3-inbox-root", "on_mouse_move", { position: { x: 20, y: 300 } });
   assert.equal(f.keys, undefined); assert.equal(f.mod.sweep, null);
 });
 
-test("a title is bright when it's in view, needs you or is done; hover brightens without changing its weight", () => {
+// Local change: no title line; the space leads the card at 14px medium (main.js card()).
+test("a card's space leads, bright when it's in view, needs you or is done; hover brightens it, its weight stays", () => {
   const f = fixture(); f.env.theme = () => ({ foreground: "bright", muted: "quiet" });
-  f.add("Seen", "idle"); f.add("Finished", "done"); f.add("Stuck", "blocked"); f.add("Open", "idle").focused = true;
+  for (const [name, status] of [["Seen", "idle"], ["Finished", "done"], ["Stuck", "blocked"], ["Open", "idle"]]) f.add(name, status).space_name = name;
+  f.rows[3].focused = true;
   f.render();
-  const look = (name) => { const { style } = holding(f.tree, name); return [style.text_color[0], Boolean(style.font_medium)]; };
-  assert.deepEqual(look("Seen"), ["quiet", false]);
-  for (const name of ["Finished", "Stuck", "Open"]) assert.deepEqual(look(name), ["bright", true], name);
+  const look = (name) => { const { style } = holding(f.tree, name); return [style.text_color[0], style.text_size[0], Boolean(style.font_medium)]; };
+  assert.deepEqual(look("Seen"), ["quiet", 14, true]);
+  for (const name of ["Finished", "Stuck", "Open"]) assert.deepEqual(look(name), ["bright", 14, true], name);
   f.mod.hovered = "Seen"; f.render();
-  assert.deepEqual(look("Seen"), ["bright", false]);
+  assert.deepEqual(look("Seen"), ["bright", 14, true]);
 });
 
-test("a card's marks sit on its third line when it has one, else on the title's", () => {
-  const f = fixture(); f.add("m1/A"); f.add("m1/B");
+// Local change: the space's line holds only its mark, name and state; the machine and program marks go on the second line.
+test("a card's marks sit on its second line, after the branch, never on the space's line", () => {
+  const f = fixture(); f.add("m1/A").space_name = "Alpha"; f.add("m1/B").space_name = "Beta";
   f.env.panes = () => [{ pane: "m1/A", branch: "dev" }];
   f.render();
-  assert.equal(find(lineOf(f.tree, "m1/A"), "machine-m1/A"), null, "the title keeps its whole line");
-  assert.ok(find(lineOf(f.tree, "dev"), "machine-m1/A"), "the branch line carries the mark");
-  assert.ok(find(lineOf(f.tree, "m1/B"), "machine-m1/B"), "no third line: the title's line carries it");
+  const line = (id, text) => find(f.tree, id).items.find((l) => l && typeof l === "object" && texts(l).includes(text));
+  assert.equal(find(line("card-m1/A", "Alpha"), "machine-m1/A"), null, "the space keeps its whole line");
+  assert.ok(find(line("card-m1/A", "dev"), "machine-m1/A"), "the branch line carries the mark");
+  assert.equal(find(line("card-m1/B", "Beta"), "machine-m1/B"), null);
+  assert.ok(find(find(f.tree, "card-m1/B"), "machine-m1/B"), "no branch: a second line for the mark alone");
 });
 
-test("a space's monogram is its first glyph, in T3's color for the same name", () => {
+// Local change (project.js): with no icon of its own, a space's mark is a folder in its name's color, not a letter.
+const seek = (n, ok) => !n || typeof n !== "object" ? null : ok(n) ? n : n.items.map((c) => seek(c, ok)).find(Boolean) ?? null;
+test("a space's mark is a folder in T3's color for its name; a name with nothing to spell gets the plain folder", () => {
   const f = fixture(), run = (code) => vm.runInContext(code, f.context);
   // T3's own cases (apps/mobile/src/lib/projectIcon.test.ts), its colors as Tailwind's 400.
   for (const [name, text, color] of [["t3code", "T", "#2dd4bf"], ["Auto Monogram", "A", "#a3e635"], ["blitzdiff", "B", "#f472b6"],
     ["uoalbumdotclub", "U", "#9ca3af"], ["  Tagium  ", "T", "#a3e635"], ["Café Ünïcode", "C", "#e879f9"], ["web2 app", "W", "#34d399"]]) {
     assert.deepEqual([run(`monogram(${JSON.stringify(name)})`), run(`tint(${JSON.stringify(name)}, true)`)], [text, color], name);
   }
-  assert.deepEqual([run(`monogram("智能算量")`), run(`monogram("~/dev")`)], ["智", "D"]);
-  assert.equal(run(`monogram("~")`), "", "nothing to spell: the folder instead");
+  assert.deepEqual([run('monogram("智能算量")'), run('monogram("~/dev")')], ["智", "D"]);
+  assert.equal(run('monogram("~")'), "", "nothing to spell");
   f.add("A"); f.render();
-  const tile = holding(f.tree, "O"), color = run('tint("One", true)');
-  assert.deepEqual([tile.style.size[0], tile.style.bg[0], tile.style.text_color[0], tile.style.text_size[0]], [16, color + "24", color, 10.24], "T3's 14% wash of the color, the card's 16px, type as before");
+  const color = run('tint("One", true)');
+  const tile = seek(find(f.tree, "card-A"), (n) => n.style.bg?.[0] === color + "24");
+  assert.ok(tile, "T3's 14% wash of the color");
+  assert.deepEqual([tile.style.size[0], tile.style.rounded[0]], [18, 4.5], "the card's 18px mark");
+  assert.deepEqual([tile.items[0].style.size[0], tile.items[0].style.text_color[0]], [18 * 0.7, color], "the folder in the color");
+  assert.equal(holding(f.tree, "O"), null, "no letter");
+  f.env.spaces = () => [{ id: "s1", name: "~", tabs: [] }]; f.rows[0].space_name = "~"; f.render();
+  assert.equal(seek(find(f.tree, "card-A"), (n) => String(n.style.bg?.[0] ?? "").endsWith("24")), null, "home's ~: no color to wash");
 });
 
-test("a space's own icon, found as T3 finds it, replaces its monogram on every card", async () => {
+// Local change (project.js): the icon is found with git ls-files (tracked and untracked, not ignored), anywhere in the repo,
+// unless t3-icons.json names one; looked for again every minute.
+function iconFixture(files) {
   const f = fixture(), runs = [], written = [];
   // Its terminal is down in the repo: the icon is the repo's, as T3's is its project root's.
   f.env.spaces = () => [{ id: "s1", name: "One", folder: "", machine: "vps", tabs: [{ id: "b1" }] }];
   f.env.panes = () => [{ pane: "A", tab: "b1", cwd: "/w/one/src" }];
   Object.assign(f.context, {
     Buffer, createHash: require("node:crypto").createHash, appHome: () => "/app",
-    fs: { exists: async () => false, mkdir: async () => {}, writeFile: async (p, b) => written.push([p, Buffer.from(b).toString()]) },
-    readTextFile: async (p) => p === "/w/one/index.html" ? `<link href="/brand/logo.svg" rel="icon">` : null,
-    exec: async (cmd, args, opts) => {
-      if (cmd === "git") return opts.cwd === "/w/one/src" ? { code: 0, stdout: "/w/one\n" } : { code: 128, stdout: "" };
-      runs.push([args.slice(3), opts]);
-      if (args[1].startsWith("base64")) return { code: 0, stdout: Buffer.from("<svg/>").toString("base64").replace(/(.{4})/g, "$1\n") };
-      return { code: 0, stdout: args.includes("brand/logo.svg") ? "brand/logo.svg" : "" };
+    fs: { exists: async (p) => written.some(([w]) => w === p), mkdir: async () => {}, writeFile: async (p, text) => { written.push([p, text]); } },
+    readTextFile: async (p, o) => files[p] !== undefined && (p.startsWith("/app/") || o?.on === "vps") ? files[p] : null,
+    exec: async (cmd, args, opts = {}) => {
+      runs.push({ cmd, args: [...args], opts: { ...opts } });
+      if (cmd === "sh") return { code: 0, stdout: "" };
+      if (args.includes("--show-toplevel")) return opts.cwd === "/w/one/src" ? { code: 0, stdout: "/w/one\n/w/one/.git\n" } : { code: 128, stdout: "" };
+      if (args.includes("ls-files")) return { code: 0, stdout: files.listed ?? "" };
+      return { code: 1, stdout: "" };
     },
   });
-  f.add("A"); f.render();
-  await new Promise((done) => setTimeout(done, 0));
-  assert.equal(runs[0][0][0], "favicon.svg", "the well-known places first, in T3's order");
-  assert.deepEqual([...runs[1][0]], ["public/brand/logo.svg", "brand/logo.svg"], "then the page's link, public/ first");
-  assert.deepEqual({ ...runs[1][1] }, { cwd: "/w/one", on: "vps" }, "looked for on the space's own machine");
-  const [[at, bytes]] = written, icon = at.slice("/app/".length);
-  assert.match(icon, /^cache\/t3-icons\/[0-9a-f]{16}\.svg$/); assert.equal(bytes, "<svg/>");
+  f.runs = (what) => runs.filter((r) => r.args.includes(what));
+  f.written = written;
+  f.add("A");
+  return f;
+}
+const tick = () => new Promise((done) => setTimeout(done, 0));
+const picture = (f) => seek(find(f.tree, "card-A"), (n) => Boolean(n.style.image));
+
+test("a space's own icon, found in its repo by git, replaces its folder mark on every card", async () => {
+  const f = iconFixture({ listed: "public/favicon.svg\nlogo.png\nfavicon.svg\nREADME.md\nbrand/icon.svg\n", "/w/one/favicon.svg": "<svg/>" });
+  f.render(); await tick();
+  const [ls] = f.runs("ls-files");
+  assert.deepEqual(ls.opts, { cwd: "/w/one", on: "vps" }, "asked of the repo's top, on the space's own machine");
+  assert.ok(ls.args.includes(":(glob,icase)**/favicon.*") && ls.args.includes("--others"), "anywhere in it, committed or not");
+  assert.equal(f.written.length, 1);
+  const [[at, text]] = f.written, icon = at.slice("/app/".length);
+  assert.match(icon, /^cache\/t3-icons\/[0-9a-f]{16}\.svg$/, "named by its content");
+  assert.equal(text, "<svg/>", "the shallowest, favicon before logo, svg before png");
   f.render();
-  const pic = find(f.tree, "card-A") && (function first(n) { return n?.style?.image ? n : n?.items?.map(first).find(Boolean); })(f.tree);
-  assert.deepEqual([pic.style.image[0], pic.style.size[0]], [icon, 16]);
-  assert.equal(holding(f.tree, "O"), null, "no monogram beside it");
-  f.render(f.now + 59000); await new Promise((done) => setTimeout(done, 0));
-  assert.equal(runs.length, 3, "found, it isn't looked for again within ten minutes");
+  assert.deepEqual([picture(f).style.image[0], picture(f).style.size[0]], [icon, 18]);
+  f.render(60000); await tick();
+  assert.equal(f.runs("--show-toplevel").length, 1, "not again within a minute");
+  f.render(62000); await tick();
+  assert.equal(f.runs("--show-toplevel").length, 2, "looked for again after a minute, so an edited icon shows");
+});
+
+test("t3-icons.json names a repo's icon, over what git would find", async () => {
+  const f = iconFixture({ listed: "favicon.svg\n", "/w/one/favicon.svg": "<svg a/>", "/w/one/apps/web/icon.svg": "<svg b/>",
+    "/app/t3-icons.json": JSON.stringify({ one: "apps/web/icon.svg" }) });
+  f.render(); await tick();
+  assert.equal(f.runs("ls-files").length, 0, "no search");
+  assert.deepEqual(f.written.map(([, text]) => text), ["<svg b/>"]);
+});
+
+test("a repo with no icon keeps the folder mark", async () => {
+  const f = iconFixture({ listed: "README.md\nsrc/logo.txt\n" });
+  f.render(); await tick(); f.render();
+  assert.equal(picture(f), null);
+  assert.equal(f.written.length, 0);
 });
 
 // The list moves as T3's (Sidebar.motion.ts): a frame where the rows were, then let go to ease into place.
@@ -395,7 +446,7 @@ const flyOf = (f, address) => {
 const at = (n) => ({ id: n.key, top: n.style.top?.[0], opacity: n.style.opacity?.[0] });
 
 test("settling slides the card down into Settled and the rows under it up, then lets them go", () => {
-  const f = fixture(); f.add("A", "idle", 300); f.add("B", "idle", 200); f.add("C", "idle", 100);
+  const f = fixture(SECTIONS); f.add("A", "idle", 300); f.add("B", "idle", 200); f.add("C", "idle", 100);
   f.mod.open = true; f.mod.listH = 600; f.render();
   assert.deepEqual(at(flyOf(f, "B")), { id: "fly-B-0", top: 0, opacity: 1 }, "nothing moves on the first draw");
   f.terms[0].labels.settled = "1100:0"; f.render(1100);
@@ -432,7 +483,7 @@ test("a row that leaves fades out where it was, then goes", () => {
 });
 
 test("a settled row's time fades out as its undo fades in, and back", () => {
-  const f = fixture(); f.add("A"); f.terms[0].labels.settled = "500:0"; f.mod.open = true;
+  const f = fixture(SECTIONS); f.add("A"); f.terms[0].labels.settled = "500:0"; f.mod.open = true;
   f.render();
   const corner = () => find(f.tree, "slim-corner-A"), undo = () => find(f.tree, "unsettle-A");
   assert.deepEqual([corner().items[0].style.opacity[0], undo().style.opacity[0]], [1, 0]);
@@ -480,7 +531,7 @@ test("settling shows T3's undo notice over the first shelf for 5s; Undo puts the
 });
 
 test("folding Working slides its header down with the list, as T3's markers move, so nothing passes over it", () => {
-  const f = fixture(), a = f.add("A", "working", 300); f.add("B", "working", 200); f.add("C", "idle", 100); a.focused = true;
+  const f = fixture(SECTIONS), a = f.add("A", "working", 300); f.add("B", "working", 200); f.add("C", "idle", 100); a.focused = true;
   f.terms[2].labels.settled = "500:0"; f.mod.workOpen = true; f.mod.open = true; f.mod.listH = 600; f.render();
   f.mod.workOpen = false; f.render(1100);
   assert.deepEqual(at(flyOf(f, "m:working")), { id: "fly-m:working-1", top: -84, opacity: 1 }, "the header starts where it was, a card higher");
@@ -543,7 +594,9 @@ test("a review in a tab with no agent is a card, at the top of Active when it op
   const f = fixture(); f.add("A", "idle", 300); f.review(); f.render();
   assert.deepEqual(f.active(), ["pane:pm", "A"], "opened now, not news from before we were watching");
   const words = texts(find(f.tree, REVIEW));
-  assert.ok(words.includes("One") && words.includes("pm vs main"), "which project, and which diff");
+  // Local change: no title line. The space leads; the diff is the card's name.
+  assert.ok(words.includes("One"), "which project");
+  assert.equal(find(f.tree, REVIEW).style.accessibility_label[0], "pm vs main", "and which diff");
   const images = (n) => !n || typeof n !== "object" ? [] : [...(n.style?.image ?? []), ...n.items.flatMap(images)];
   assert.deepEqual(images(find(f.tree, REVIEW)), ["mods/review/logo.svg"], "and what it is, where an agent's card has its program");
   assert.equal(find(f.tree, "settle-pane:pm") && f.mod.pending.settled["pane:pm"], undefined);
@@ -573,11 +626,11 @@ test("any mod that asks gets a card, by the same rules", () => {
   f.context.spaces = () => tabs.map((s) => s.id === "s1" ? { ...s, tabs: [...s.tabs, { id: "t9" }] } : s);
   f.render();
   assert.deepEqual(cards(f.tree).sort(), ["pane:pm", "pane:pz"]);
-  assert.ok(texts(find(f.tree, "card-pane:pz")).includes("todo"));
+  assert.equal(find(f.tree, "card-pane:pz").style.accessibility_label[0], "todo");
 });
 
 test("a review's card goes where its run says: Working while it analyzes, back on top of Active when it ends", () => {
-  const f = fixture(); f.mod.workOpen = true; f.add("A", "idle", 300); f.review(); f.render(1000);
+  const f = fixture(SECTIONS); f.mod.workOpen = true; f.add("A", "idle", 300); f.review(); f.render(1000);
   f.add("B", "idle", 1050); f.render(1100);
   assert.deepEqual(f.active().slice(0, 1), ["B"], "newer news goes above it");
   f.state["review.status"] = { tr: "working" }; f.render(2000);
@@ -603,7 +656,7 @@ test("clicking a review's card focuses its pane, across spaces", () => {
 });
 
 test("settling a review closes it: no Settled, nothing to undo, and it says so", () => {
-  const f = fixture(); f.add("A", "idle", 300); f.review(); f.render();
+  const f = fixture(SECTIONS); f.add("A", "idle", 300); f.review(); f.render();
   f.event(REVIEW, "on_hover", true); f.render();
   assert.ok(find(f.tree, "tip-settle-pane:pm") || find(f.tree, "settle-pane:pm"));
   assert.equal(find(f.tree, "settle-pane:pm").handlers["on_mouse_down:left"], undefined, "no sweep starts from it");
@@ -637,7 +690,7 @@ test("a review analyzing or failed offers no Settle, by key or on hover, as a bu
 });
 
 test("a review's card can't be lifted, nor swept along with agents", () => {
-  const f = fixture(); f.add("A", "idle", 300); f.review(); f.render();
+  const f = fixture(SECTIONS); f.add("A", "idle", 300); f.review(); f.render();
   f.event(REVIEW, "on_mouse_down:left");
   assert.equal(f.mod.drag ?? null, null);
   f.event("card-A", "on_hover", true); f.render();
@@ -678,7 +731,7 @@ test("a review closed fades where it was, and its record goes with it", () => {
 });
 
 test("the rows the next and previous keys walk are the ones drawn, in order, with the one in view", () => {
-  const f = fixture(), a = f.add("A", "idle", 300); f.add("B", "working", 200); f.add("C", "idle", 100); f.add("W", "working", 50);
+  const f = fixture(SECTIONS), a = f.add("A", "idle", 300); f.add("B", "working", 200); f.add("C", "idle", 100); f.add("W", "working", 50);
   f.terms[2].labels.settled = "500:0"; a.focused = true; f.render();
   assert.deepEqual(JSON.parse(JSON.stringify(f.state["t3-inbox.rows"])), { order: ["A"], view: "A" }, "folded shelves keep their rows out of the walk");
   f.mod.workOpen = true; f.mod.open = true; f.render();
@@ -690,7 +743,7 @@ test("the rows the next and previous keys walk are the ones drawn, in order, wit
 });
 
 test("a hovered row that leaves the list (to the folded Working shelf) and comes back brings no card or Settle with it", () => {
-  const f = fixture(), a = f.add("A", "idle", 300); f.add("B", "idle", 200);
+  const f = fixture(SECTIONS), a = f.add("A", "idle", 300); f.add("B", "idle", 200);
   f.render();
   f.event("card-A", "on_hover", true); f.render(f.now + 50); f.render(f.now + 200);
   assert.ok(find(f.tree, "details-card-A"));
@@ -705,7 +758,7 @@ test("a hovered row that leaves the list (to the folded Working shelf) and comes
 });
 
 test("the snooze menu is T3's: soonest first, one row per wake minute, tonight gone once past", () => {
-  const f = fixture(); f.add("A", "working"); f.mod.workOpen = true; f.mod.hovered = "A";
+  const f = fixture(SECTIONS); f.add("A", "working"); f.mod.workOpen = true; f.mod.hovered = "A";
   const at = (day, h, m = 0) => new Date(2026, 10, day, h, m).getTime();
   const offered = (now) => {
     f.mod.napMenu = "A"; f.render(now);
@@ -726,7 +779,7 @@ test("the snooze menu is T3's: soonest first, one row per wake minute, tonight g
 // The fixture has no focus path. What it takes for keys to arrive at all: the handle a Popover moves the keyboard to is
 // on the panel, and Enter and Space, the Popover's own, are bound deeper in (checked for real against gpui-shell).
 test("the snooze menu's keys are wired to reach it", () => {
-  const f = fixture(); f.add("A", "idle", 100); f.render(); f.mod.hovered = "A"; f.render();
+  const f = fixture(SECTIONS); f.add("A", "idle", 100); f.render(); f.mod.hovered = "A"; f.render();
   f.event("snooze-menu-A", "on_open_change", true); f.render();
   const pop = find(f.tree, "snooze-menu-A"), panel = find(f.tree, "snooze-panel-A");
   assert.ok(panel.style.track_focus[0]);
@@ -739,7 +792,7 @@ test("the snooze menu's keys are wired to reach it", () => {
 });
 
 test("the clock opens its menu without lifting or opening the card, and the card's details step aside", () => {
-  const f = fixture(); f.add("A", "idle", 100); f.render(); f.mod.hovered = "A"; f.render();
+  const f = fixture(SECTIONS); f.add("A", "idle", 100); f.render(); f.mod.hovered = "A"; f.render();
   find(f.tree, "snooze-A").handlers.on_hover(true, f.cx); f.render();
   f.event("card-A", "on_mouse_down:left"); assert.equal(f.mod.drag ?? null, null);
   f.event("card-A", "on_click"); assert.deepEqual(f.calls, []);
@@ -755,7 +808,7 @@ test("the clock opens its menu without lifting or opening the card, and the card
 });
 
 test("a snoozed agent leaves the cards, working or not; undoing is no news, and it wakes where it was, marked Woke", () => {
-  const f = fixture(), b = f.add("B", "idle", 200); f.add("A", "working", 100); f.add("C", "idle", 300);
+  const f = fixture(SECTIONS), b = f.add("B", "idle", 200); b.space_name = "Bee"; f.env.theme = () => ({ foreground: "bright", muted: "quiet" }); f.add("A", "working", 100); f.add("C", "idle", 300);
   f.mod.workOpen = true; f.mod.napOpen = true; f.mod.listH = 600;
   f.render(); f.mod.hovered = "A"; f.mod.napMenu = "A"; f.render();
   f.event("snooze-0-A", "on_click"); f.flush();
@@ -775,7 +828,7 @@ test("a snoozed agent leaves the cards, working or not; undoing is no news, and 
   assert.deepEqual([f.active(), f.napping()], [["C", "B"], ["A"]], "not on top: its own place, as T3's static sort");
   assert.ok(texts(find(f.tree, "woke-B")).includes("Woke"));
   assert.equal(find(f.tree, "tip-woke-B").style.anchor[0], "bottom_center", "its label opens above, as T3's, leaving the title readable");
-  assert.ok("font_medium" in holding(f.tree, "B").style, "Woke leads as Done does");
+  assert.equal(holding(f.tree, "Bee").style.text_color[0], "bright", "Woke leads as Done does");
   // Hovered, Woke stays beside the controls; any other state makes way.
   f.mod.hovered = "B"; f.render(601000);
   assert.equal(find(f.tree, "woke-B").style.opacity, undefined);
@@ -799,7 +852,7 @@ test("clicking Woke dismisses it, leaving the card alone", () => {
 });
 
 test("a snoozed agent shows while it needs the person; a failure ends the snooze", () => {
-  const f = fixture(), a = f.add("A", "blocked"); f.mod.napOpen = true;
+  const f = fixture(SECTIONS), a = f.add("A", "blocked"); f.mod.napOpen = true;
   f.mod.hovered = "A"; f.render();
   assert.equal(find(f.tree, "snooze-A"), null, "needing the person, it can't be snoozed");
   a.status = "working"; f.label("A", "snoozed", String(3600000)); f.render(2000);
@@ -824,7 +877,7 @@ test("an open menu closes when its card comes to need the person", () => {
 });
 
 test("Wake, pinning and Settle end a snooze; a pinned agent snoozes and keeps its pin", () => {
-  const f = fixture(); f.add("A", "idle", 100); f.add("B", "idle", 200); f.add("P", "idle", 300); f.pins = ["P"]; f.mod.napOpen = true;
+  const f = fixture(SECTIONS); f.add("A", "idle", 100); f.add("B", "idle", 200); f.add("P", "idle", 300); f.pins = ["P"]; f.mod.napOpen = true;
   f.render(); f.mod.hovered = "P"; f.mod.napMenu = "P"; f.render();
   f.event("snooze-0-P", "on_click"); f.flush();
   f.label("P", "snoozed", String(3601000)); f.mod.hovered = null; f.render(2000);
@@ -849,7 +902,7 @@ test("Wake, pinning and Settle end a snooze; a pinned agent snoozes and keeps it
 });
 
 test("snoozing the agent in view moves on; opened from the shelf it stays, until it's given work", () => {
-  const f = fixture(), a = f.add("A", "idle", 300); f.add("B", "idle", 200); a.focused = true;
+  const f = fixture(SECTIONS), a = f.add("A", "idle", 300); f.add("B", "idle", 200); a.focused = true;
   f.render(); f.mod.hovered = "A"; f.mod.napMenu = "A"; f.render();
   f.event("snooze-1-A", "on_click");
   assert.deepEqual([f.calls.at(-1)[0], f.calls.at(-1)[1].terminal], ["agent.focus", "B"]);
@@ -863,7 +916,7 @@ test("snoozing the agent in view moves on; opened from the shelf it stays, until
 });
 
 test("a drag wakes a row out of the shelf, with its badge; nothing drags in, and a sweep wakes the run", () => {
-  const f = fixture(); f.add("A", "idle", 300); f.add("B", "idle", 200); f.add("C", "idle", 100); f.mod.napOpen = true; f.mod.listH = 600;
+  const f = fixture(SECTIONS); f.add("A", "idle", 300); f.add("B", "idle", 200); f.add("C", "idle", 100); f.mod.napOpen = true; f.mod.listH = 600;
   f.label("A", "snoozed", "3600000"); f.label("B", "snoozed", "3700000"); f.render();
   assert.deepEqual([f.napping(), f.order], [["A", "B"], ["C", "A", "B"]]);
   // A card lifted over the shelf has nowhere to land.
@@ -891,7 +944,7 @@ test("a drag wakes a row out of the shelf, with its badge; nothing drags in, and
 });
 
 test("folding Snoozed slides its header with the list, between Working and Settled", () => {
-  const f = fixture(); f.add("A", "idle", 300); f.add("B", "idle", 200); f.add("C", "working", 100); f.mod.listH = 600;
+  const f = fixture(SECTIONS); f.add("A", "idle", 300); f.add("B", "idle", 200); f.add("C", "working", 100); f.mod.listH = 600;
   f.label("A", "snoozed", "3600000"); f.label("B", "settled", "500:0"); f.render();
   const kids = find(f.tree, "shelves").items.map((n) => n.key).filter(Boolean);
   assert.ok(kids.indexOf("snoozed") > -1 && kids.indexOf("snoozed") < kids.indexOf("settled"));
@@ -910,7 +963,7 @@ test("a run that stops under a snooze skips the grace, as a settled one's: awake
 });
 
 test("the next and previous keys walk the shelf's rows when it's open, and only the one in view when it's folded", () => {
-  const f = fixture(), a = f.add("A", "idle", 300); f.add("B", "idle", 200); f.add("C", "idle", 100);
+  const f = fixture(SECTIONS), a = f.add("A", "idle", 300); f.add("B", "idle", 200); f.add("C", "idle", 100);
   f.label("A", "snoozed", "3600000"); f.label("B", "snoozed", "3700000"); f.render();
   assert.deepEqual(Array.from(f.state["t3-inbox.rows"].order), ["C"]);
   a.focused = true; f.render();
@@ -922,7 +975,7 @@ test("the next and previous keys walk the shelf's rows when it's open, and only 
 test("a duration counts from the click; a clock time that passed since the menu was drawn is refused", () => {
   const at = (h, m = 0, s = 0) => new Date(2026, 10, 3, h, m, s).getTime();
   const row = (f, label) => find(f.tree, "snooze-panel-A").items.findIndex((r) => texts(r).includes(label));
-  const f = fixture(); f.add("A", "idle", 100); f.add("B", "idle", 90); f.mod.hovered = "A"; f.mod.napMenu = "A"; f.render(at(17, 59, 50));
+  const f = fixture(SECTIONS); f.add("A", "idle", 100); f.add("B", "idle", 90); f.mod.hovered = "A"; f.mod.napMenu = "A"; f.render(at(17, 59, 50));
   const evening = row(f, "This evening");
   f.now = at(18, 0, 10);
   f.event(`snooze-${evening}-A`, "on_click"); f.flush();
@@ -939,7 +992,7 @@ test("a duration counts from the click; a clock time that passed since the menu 
 });
 
 test("snoozing with the pointer still on the clock leaves nothing lit: the row opens and details come back", () => {
-  const f = fixture(); f.add("A", "idle", 300); f.add("B", "idle", 200); f.mod.napOpen = true; f.mod.listH = 600;
+  const f = fixture(SECTIONS); f.add("A", "idle", 300); f.add("B", "idle", 200); f.mod.napOpen = true; f.mod.listH = 600;
   f.render(); f.mod.hovered = "A"; f.render();
   find(f.tree, "snooze-A").handlers.on_hover(true, f.cx); f.mod.napMenu = "A"; f.mod.napAt = 0; f.render();
   f.event("snooze-panel-A", "on_action:t3_inbox_snooze_pick"); f.flush();
@@ -966,7 +1019,7 @@ test("a label write that keeps failing is tried once a minute from render, and a
 });
 
 test("undoing a Settle brings back a snooze that hasn't run out", () => {
-  const f = fixture(), a = f.add("A", "idle", 300); f.add("B", "idle", 200); f.label("A", "snoozed", "3600000"); a.focused = true; f.render();
+  const f = fixture(SECTIONS), a = f.add("A", "idle", 300); f.add("B", "idle", 200); f.label("A", "snoozed", "3600000"); a.focused = true; f.render();
   f.settle(); f.flush();
   assert.deepEqual(f.labelled, ["label A settled=1000:0", "label A snoozed="]);
   f.label("A", "settled", "1000:0"); f.label("A", "snoozed", ""); f.render(1100);
@@ -983,7 +1036,7 @@ test("undoing a Settle brings back a snooze that hasn't run out", () => {
 });
 
 test("still at work when it wakes, it says Working and Woke; hovered, Woke stays beside the controls", () => {
-  const f = fixture(), a = f.add("A", "working", 100); f.mod.workOpen = true; f.label("A", "snoozed", "500"); f.render();
+  const f = fixture(SECTIONS), a = f.add("A", "working", 100); f.mod.workOpen = true; f.label("A", "snoozed", "500"); f.render();
   assert.deepEqual(f.working(), ["A"]);
   const says = () => texts(find(f.tree, "corner-A"));
   assert.ok(says().includes("Working") && says().includes("Woke"));
@@ -1004,7 +1057,7 @@ test("a run that ends under a snooze lifts the agent when it wakes: it came back
 });
 
 test("a pinned card offers Settle beside the clock, as T3's; settling drops the pin, and Undo brings it back in its place", () => {
-  const f = fixture(); f.add("P", "idle", 300); f.add("Q", "idle", 200); f.add("A", "idle", 100); f.pins = ["P", "Q"];
+  const f = fixture(SECTIONS); f.add("P", "idle", 300); f.add("Q", "idle", 200); f.add("A", "idle", 100); f.pins = ["P", "Q"];
   f.render(); f.mod.hovered = "P"; f.render();
   assert.ok(find(f.tree, "settle-P").handlers.on_click);
   assert.ok(find(f.tree, "snooze-P"));
@@ -1025,7 +1078,7 @@ test("a pinned card offers Settle beside the clock, as T3's; settling drops the 
 });
 
 test("the settle key and a drag to Settled take a pinned agent too; Undo restores its pin and its snooze", () => {
-  const f = fixture(), a = f.add("A", "idle", 300); f.add("B", "idle", 200); f.pins = ["A"]; a.focused = true; f.render();
+  const f = fixture(SECTIONS), a = f.add("A", "idle", 300); f.add("B", "idle", 200); f.pins = ["A"]; a.focused = true; f.render();
   f.settle(); f.flush();
   assert.deepEqual([f.pins, f.calls.at(-1)[1].terminal], [[], "B"], "and the view moves on");
   f.label("A", "settled", "1000:0"); a.focused = false; f.render(1100);
@@ -1049,7 +1102,7 @@ test("the settle key and a drag to Settled take a pinned agent too; Undo restore
 });
 
 test("a sweep from a pinned card's Settle stays among the pins", () => {
-  const f = fixture(); f.add("P", "idle", 300); f.add("Q", "idle", 200); f.add("A", "idle", 100); f.pins = ["P", "Q"];
+  const f = fixture(SECTIONS); f.add("P", "idle", 300); f.add("Q", "idle", 200); f.add("A", "idle", 100); f.pins = ["P", "Q"];
   f.render(); f.mod.hovered = "P"; f.render();
   f.event("settle-P", "on_mouse_down:left");
   f.event("t3-inbox-root", "on_mouse_move", { position: { x: 20, y: 300 } }); f.render();
@@ -1060,7 +1113,7 @@ test("a sweep from a pinned card's Settle stays among the pins", () => {
 });
 
 test("the snooze menu lights nothing until the pointer or a key gets there, and a pick needs a lit row", () => {
-  const f = fixture(); f.add("A", "idle", 100); f.render(); f.mod.hovered = "A"; f.render();
+  const f = fixture(SECTIONS); f.add("A", "idle", 100); f.render(); f.mod.hovered = "A"; f.render();
   f.event("snooze-menu-A", "on_open_change", true); f.render();
   const lit = () => find(f.tree, "snooze-panel-A").items.filter((r) => r.key).findIndex((r) => r.style.bg);
   const rows = find(f.tree, "snooze-panel-A").items.filter((r) => r.key).length;
@@ -1078,7 +1131,7 @@ test("the snooze menu lights nothing until the pointer or a key gets there, and 
 });
 
 test("Custom… opens the dialog; its answer snoozes as a preset does, with its Undo, unless the agent came to need the person", () => {
-  const f = fixture(), a = f.add("A", "idle", 300); f.add("B", "idle", 200); f.render(); f.mod.hovered = "A"; f.mod.napMenu = "A"; f.render();
+  const f = fixture(SECTIONS), a = f.add("A", "idle", 300); f.add("B", "idle", 200); f.render(); f.mod.hovered = "A"; f.mod.napMenu = "A"; f.render();
   const panel = find(f.tree, "snooze-panel-A").items, i = panel.filter((r) => r.key).findIndex((r) => texts(r).includes("Custom…"));
   assert.equal(panel.filter((r) => r.key).length - 1, i, "last, under a separator");
   const opened = []; f.context.openOverlay = (o) => opened.push(o);
@@ -1153,4 +1206,102 @@ test("a far-off snooze wakes on time: its timer is re-armed a day at a time", ()
   assert.ok(armed().includes(86400000));
   assert.ok(!armed().some((ms) => ms > 86400000));
   assert.equal(f.mod.nextWake, 1000 + 3 * 86400000);
+});
+
+// Local change: the inbox as it runs, FLAT (main.js `const FLAT = true`).
+test("FLAT: one list, newest finish first; a working agent keeps the place of its last finish", () => {
+  const f = fixture(); f.add("A", "idle", 100); f.add("B", "idle", 300); const c = f.add("C", "working", 200);
+  f.render();
+  assert.deepEqual(cards(f.tree), ["B", "C", "A"], "a working one never finished here: its start");
+  c.status = "idle"; f.render(5000); f.render(8000);
+  assert.deepEqual(cards(f.tree), ["C", "B", "A"], "it stopped: up top");
+  c.status = "working"; f.render(9000);
+  assert.deepEqual(cards(f.tree), ["C", "B", "A"], "working again, it keeps that place");
+  assert.deepEqual(f.order, ["C", "B", "A"], "agent.next goes as the list reads");
+  assert.deepEqual(cards(find(f.tree, "shelves")), [], "nothing on a Working shelf");
+});
+
+test("FLAT: no Settle, no Snooze, no drag", () => {
+  const f = fixture(); f.add("A", "idle", 100); f.mod.hovered = "A";
+  f.render();
+  assert.equal(find(f.tree, "settle-A").handlers.on_click, undefined, "Settle is no button");
+  assert.equal(find(f.tree, "snooze-menu-A"), null, "no clock");
+  f.event("card-A", "on_mouse_down:left");
+  assert.equal(f.mod.drag, undefined, "a press lifts nothing");
+});
+
+// Local change: a card's right-click menu (main.js openCardMenu, cardMenuItems, cardMenuView).
+test("right-clicking a card opens its menu at the pointer, and takes its details down", () => {
+  const f = fixture(); const a = f.add("A", "idle", 100); a.tab = "t1"; f.mod.hovered = "A";
+  f.render();
+  f.event("card-A", "on_mouse_down:right");
+  assert.equal(f.opened.length, 1);
+  const [o] = f.opened;
+  assert.deepEqual([o.mod, o.kind, o.width], ["t3-inbox", "popup", 210]);
+  assert.deepEqual({ ...o.props.cardMenu }, { address: "A", pane: "A", tab: "t1", space: "s1", mod: false, kids: false, folded: false });
+  assert.equal(f.mod.quiet.key, "A", "its details step aside");
+});
+
+test("a card with sub-agents says so to its menu, folded or not", () => {
+  const f = fixture(); f.add("A", "idle", 100);
+  f.terms.push({ address: "k1", parent: "A", status: "working", state: "live", labels: {} });
+  f.render(); f.event("card-A", "on_mouse_down:right");
+  assert.deepEqual([f.opened[0].props.cardMenu.kids, f.opened[0].props.cardMenu.folded], [true, false]);
+  f.mod.kidsFolded = ["A"]; f.render(); f.event("card-A", "on_mouse_down:right");
+  assert.equal(f.opened[1].props.cardMenu.folded, true);
+});
+
+const menuOf = (cardMenu) => { const m = fixture({ props: { overlay: "o1", cardMenu } }); m.render(); return m; };
+const labels = (m) => texts(m.tree).filter((x) => x !== "");
+test("a card's menu: what an agent's card can do, each item running its command and closing the menu", () => {
+  const m = menuOf({ address: "A", pane: "p1", tab: "t1", space: "s1", mod: false, kids: false, folded: false });
+  assert.deepEqual(labels(m), ["Open", "Peek", "Split right", "New tab in space", "Rename tab", "Rename space", "Close pane", "Close tab"]);
+  const want = [["agent.focus", { terminal: "A" }], ["terminal.peek", { terminal: "A" }], ["pane.split", { direction: "right", pane: "p1" }],
+    ["tab.new", { space: "s1" }], ["tab.rename", { id: "t1" }], ["space.rename", { id: "s1" }], ["pane.close", { pane: "p1" }], ["tab.close", { id: "t1" }]];
+  want.forEach(([name, args], i) => {
+    m.event(`card-menu-${i}`, "on_click");
+    assert.deepEqual(JSON.parse(JSON.stringify(m.calls.at(-1))), [name, args], labels(m)[i]);
+  });
+  assert.deepEqual(m.closed, Array(8).fill("o1"), "each closes the menu");
+  assert.equal(m.opened.length, 0, "a menu copy starts no menu of its own");
+});
+
+test("a card's menu: a mod pane's card only opens or closes it", () => {
+  const m = menuOf({ address: "pane:pm", pane: "pm", tab: "tr", space: "s1", mod: true, kids: false, folded: false });
+  assert.deepEqual(labels(m), ["Open", "Close pane"]);
+  m.event("card-menu-0", "on_click");
+  assert.deepEqual(JSON.parse(JSON.stringify(m.calls)), [["pane.focus", { pane: "pm" }]]);
+});
+
+test("a card's menu: keys move, Enter runs the lit item, Esc closes", () => {
+  const m = menuOf({ address: "A", pane: "p1", tab: "t1", space: "s1", mod: false, kids: false, folded: false });
+  m.event("card-menu", "on_key_down", { key: "enter" });
+  assert.equal(m.calls.length, 0, "nothing lit, nothing runs");
+  m.event("card-menu", "on_key_down", { key: "down" }); m.event("card-menu", "on_key_down", { key: "down" }); m.render();
+  m.event("card-menu", "on_key_down", { key: "enter" });
+  assert.equal(m.calls.at(-1)[0], "terminal.peek");
+  m.event("card-menu", "on_key_down", { key: "up" }); m.event("card-menu", "on_key_down", { key: "up" }); m.render();
+  m.event("card-menu", "on_key_down", { key: "enter" });
+  assert.equal(m.calls.at(-1)[0], "tab.close", "up from the top goes round to the end");
+  m.event("card-menu", "on_key_down", { key: "escape" });
+  assert.equal(m.closed.length, 3);
+});
+
+test("a card's menu folds its sub-agents through shared state: the inbox's copy folds them, once", () => {
+  const m = menuOf({ address: "A", pane: "p1", tab: "t1", space: "s1", mod: false, kids: true, folded: false });
+  assert.equal(labels(m)[2], "Collapse sub-agents");
+  m.event("card-menu-2", "on_click");
+  const ask = m.state["t3-inbox.kids-toggle"];
+  assert.equal(ask.address, "A");
+  const old = fixture({ state: { "t3-inbox.kids-toggle": { address: "A", at: 1 } } }); old.add("A"); old.render();
+  assert.deepEqual([...old.mod.kidsFolded], [], "an ask from before this copy started isn't for it");
+  const f = fixture(); f.add("A"); f.render();
+  f.state["t3-inbox.kids-toggle"] = ask; f.render();
+  assert.deepEqual([...f.mod.kidsFolded], ["A"]);
+  assert.equal(f.data.get("kids-folded"), '["A"]', "kept");
+  f.render(); f.render();
+  assert.deepEqual([...f.mod.kidsFolded], ["A"], "once");
+  f.state["t3-inbox.kids-toggle"] = { address: "A", at: ask.at + 1 }; f.render();
+  assert.deepEqual([...f.mod.kidsFolded], [], "a second ask opens them");
+  assert.equal(labels(menuOf({ address: "A", pane: "p1", tab: "t1", space: "s1", mod: false, kids: true, folded: true }))[2], "Expand sub-agents");
 });
