@@ -15,6 +15,7 @@ Thanks to [JinJieBeWater/herdr-t3](https://github.com/JinJieBeWater/herdr-t3), w
 - **Space icons**: the repo's own favicon, icon or logo, found among the files git knows about, shallowest first. To pick one yourself, add `{ "<repo folder>": "<path in the repo>" }` to `~/.config/herdr-app/t3-icons.json`. With none, a folder in the space's color.
 - **New space** on any machine in any folder: pick the machine, then type or step through its folders from its home. On this computer, Browse… opens the system picker too.
 - The same names and status marks everywhere: a spinner while working, `!` when blocked, a dot when done.
+- **Usage**: a row of rings above the settings button, one per account: Claude, each Codex account (signed-out ones too) and OpenCode Go. The ring is the week's usage, the white tick how much of the week has passed, and the number's color the pace, as in Claude Code's weekly status line. A dot at the top right once the 5-hour limit is 70% used. Hover for every window and when it resets.
 
 **Tabs and panes**
 - Slim 24px tabs and framed panes with a header. Closing a tab or pane asks first while a program is running in it.
@@ -89,6 +90,7 @@ Copy `layouts/`, `mods/` and `t3-common/` into `~/.config/herdr-app/`, merge `ke
 - Ctrl+P: `hc read` of the focused terminal.
 - Search: `rg`, `git grep` or `grep` in the repository, on its machine.
 - Saving on another machine: `sh` there, with `mktemp`, `printf`, `base64` and `cat`.
+- Usage: every 5 minutes, the usage endpoints of api.anthropic.com, chatgpt.com and opencode.ai (or openrouter.ai), with the sign-ins in `~/.claude`, `~/.codex` and opencode's `auth.json`. To keep showing a signed-out Codex account it keeps a copy of each account's `auth.json` in `~/.config/herdr-app/data/usage-meter/codex/` and renews that copy's token itself. It never renews the account Codex is signed in with.
 - GitHub and Worktrees: `gh`. Ports: `ss` or `Get-NetTCPConnection`, and `ssh -L` when you forward one.
 - The GitHub panel's agent briefs ask the agent to report in Korean. Change it in `mods/github/brief.js`.
 
