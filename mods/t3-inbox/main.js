@@ -212,7 +212,7 @@ function cardMenuItems(c) {
     ["Close pane", "x", () => run("pane.close", { pane: c.pane })],
   ];
   return [
-    ["Open", "square", () => run("agent.focus", { terminal: c.address })],
+    ["Open", "square", () => c.lost ? run("pane.focus", { pane: c.pane }) : run("agent.focus", { terminal: c.address })],
     ["Peek", "layers", () => run("terminal.peek", { terminal: c.address })],
     ...(c.kids ? [[c.folded ? "Expand sub-agents" : "Collapse sub-agents", c.folded ? "chevron-down" : "chevron-right",
       () => setShared("t3-inbox.kids-toggle", { address: c.address, at: Date.now() })]] : []),
@@ -229,7 +229,7 @@ function cardMenuItems(c) {
 const cardMenuHeight = (c) => cardMenuItems(c).reduce((h, it) => h + (it === "-" ? MENU_SEP : MENU_ROW), 10);
 
 function openCardMenu(a, kids, folded) {
-  const c = { address: a.address, pane: a.pane ?? null, tab: a.tab ?? null, space: a.space ?? null, mod: Boolean(a.mod), kids, folded };
+  const c = { address: a.address, pane: a.pane ?? null, tab: a.tab ?? null, space: a.space ?? null, mod: Boolean(a.mod), ...(a.lost ? { lost: true } : {}), kids, folded };
   openOverlay({ mod: "t3-inbox", kind: "popup", width: 210, height: cardMenuHeight(c), props: { cardMenu: c } });
 }
 
@@ -442,7 +442,13 @@ export default class Inbox extends View {
       localStorage.setItem("kids-folded", JSON.stringify(this.kidsFolded));
     }
     // Mod panes that ask for a card (see the top), one a tab. `pane:<id>` is their address, in t3-inbox.rows too.
-    const every = [...runs, ...sp.flatMap((s) => s.tabs.flatMap((c) => {
+    // A pane whose program is an agent that stopped reporting (a Claude session moved to the background clears its
+    // terminal's status) isn't in agents(); it still gets a card, idle unless what's under it works. Its pane is its way in.
+    const lost = ps.filter((p) => p.terminal && p.app && p.status == null && !runs.some((a) => a.address === p.terminal)).flatMap((p) => {
+      const s = sp.find((x) => x.tabs.some((c) => c.id === p.tab));
+      return s ? [{ ...p, address: p.terminal, status: "idle", lost: true, focused: p.pane === f?.pane, space: s.id, space_name: s.name }] : [];
+    });
+    const every = [...runs, ...lost, ...sp.flatMap((s) => s.tabs.flatMap((c) => {
       const p = ps.find((x) => x.tab === c.id && x.mod && programOf(x)?.inbox);
       return p && !runs.some((a) => a.tab === c.id) ? [{ ...p, address: `pane:${p.pane}`, status: modStatus(p) ?? "idle", focused: p.pane === f?.pane,
         space: s.id, space_name: s.name, program: { name: p.title, ...programOf(p) } }] : [];
@@ -608,7 +614,7 @@ export default class Inbox extends View {
       this.changed[a.address] = { ...this.changed[a.address], at: Date.now(), start: null };
       localStorage.setItem("changes", JSON.stringify(this.changed));
     };
-    const go = (a) => a.mod ? run("pane.focus", { pane: a.pane }) : run("agent.focus", { terminal: a.address });
+    const go = (a) => a.mod || a.lost ? run("pane.focus", { pane: a.pane }) : run("agent.focus", { terminal: a.address });
     // Putting away the agent in view moves on to the next card down the list, from the top past the end, as T3 does;
     // one in the background moves nothing.
     const moveOn = (xs) => {

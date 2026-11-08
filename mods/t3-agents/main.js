@@ -3,7 +3,7 @@
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, focused, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, layout } from "herdr";
+import { agents, terminals, spaces, focused, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, layout } from "herdr";
 import { namer } from "./name.js";
 import { kidStatus, ownStatus, subAgents, treeStatus } from "./tree.js";
 import { tip, tipMark } from "./tip.js";
@@ -29,6 +29,27 @@ function duration(ms) {
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+}
+
+// A live sub-agent with no reporting agent above it has no row to hang from: its parent ended, or stopped
+// reporting (a Claude session moved to the background clears its terminal's status). It gets its own row, shaped
+// like an agents() entry. A parent that reports but isn't listed yet (a machine still connecting) keeps its kids.
+function orphanRows(all, listed) {
+  const byAddr = new Map(all.map((k) => [k.address, k]));
+  const anchored = (k) => {
+    for (let p = byAddr.get(k.parent); p?.state === "live"; p = byAddr.get(p.parent)) if (p.status != null) return true;
+    return false;
+  };
+  const named = new Map(spaces().map((s) => [s.id, s.name]));
+  return all.filter((k) => k.state === "live" && k.parent && k.status != null && !listed.has(k.address) && !anchored(k)).map((k) => {
+    const machine = k.address.includes("/") ? k.address.split("/")[0] : null;
+    const id = byAddr.get(k.parent)?.labels?.["herdr.space"];
+    const space = id ? (machine ? `${machine}/${id}` : id) : k.address;
+    return {
+      address: k.address, orphan: true, status: kidStatus(k, listed), program: k.program, title: k.name || k.title || k.address,
+      space, space_name: named.get(space) ?? "", tab: null, seq: 0, pinned: false, focused: false,
+    };
+  });
 }
 
 export default class Agents extends View {
@@ -224,6 +245,7 @@ export default class Agents extends View {
     let list = agents();
     this.listed = new Map(list.map((a) => [a.address, a.status]));
     const all = terminals();
+    list = [...list, ...orphanRows(all, this.listed)];
     const shown = focused()?.agent;
     const now = Date.now();
     this.track(list, now);
@@ -344,7 +366,8 @@ export default class Agents extends View {
           else if (this.hovered === a.address) this.hovered = null;
           cx.notify();
         })
-        .on_click(() => run("agent.focus", { terminal: a.address }))
+        // An orphan has no pane to focus.
+        .on_click(() => a.orphan ? this.peek(a.address) : run("agent.focus", { terminal: a.address }))
         .child(h_flex().id(`agent-fold-${a.address}`).size(18).flex_none().items_center().justify_center()
           .when(subs.length > 0, el => el.role("button").accessibility_label(this.isFolded(a.address) ? "Expand sub-agents" : "Collapse sub-agents").on_click((_e, cx) => {
             cx.stop_propagation();
