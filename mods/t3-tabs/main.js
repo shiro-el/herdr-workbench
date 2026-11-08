@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, Popup } from "gpui-base";
-import { spaces, panes, agents, terminals, run, openOverlay, closeOverlay, focused, hc, theme, window, layout, settings, props, setShared, nextCommand } from "herdr";
+import { spaces, panes, agents, terminals, run, openOverlay, closeOverlay, focused, hc, theme, window, layout, settings, props, setShared, nextCommand, notify } from "herdr";
 import { modStatus, namer, programOf } from "./name.js";
 import { ownStatus, subAgents, treeStatus } from "./tree.js";
 import { tip } from "./tip.js";
@@ -65,6 +65,9 @@ function find(node, id) {
 const leadOf = (mine) => mine.find(p => p.status != null) ?? mine.find(p => p.focused) ?? mine[0];
 const nameOf = (c, lead) => c.named ? c.name : lead ? namer()(lead) : "Terminal";
 
+// How long a move waits on the machine (ms): the terminal may be on another one.
+const MOVE_WAIT = 15000, MOVE_POLL = 200;
+
 // A pane is empty when its own shell holds the foreground. No answer counts as busy: better to ask.
 // shortcut: a shell's background jobs read as empty, upgrade if Herdr ever reports them.
 const SHELL = /^-?(zsh|bash|fish|sh|dash|ksh|tcsh|nu)$/;
@@ -110,6 +113,9 @@ export default class Tabs extends View {
         else if (command === "close-pane") await this.closePane(focused()?.pane, cx);
         else if (command.startsWith("close-tab:")) await this.closeTab(command.slice("close-tab:".length), cx);
         else if (command.startsWith("close-pane:")) await this.closePane(command.slice("close-pane:".length), cx);
+        else if (command.startsWith("close-others:")) await this.closeOthers(command.slice("close-others:".length), false, cx);
+        else if (command.startsWith("close-others-now:")) await this.closeOthers(command.slice("close-others-now:".length), true, cx);
+        else if (command.startsWith("move:")) await this.move(...command.slice("move:".length).split(" "), cx);
       }
     });
   }
@@ -142,6 +148,45 @@ export default class Tabs extends View {
     // A space's last pane closes the space, and Herdr asks that itself.
     if (!p.terminal || ps.filter(q => tabs.includes(q.tab)).length === 1 || await atPrompt(p.terminal)) return run("pane.close", { pane });
     this.ask("pane", namer()(p), "This stops its running process and clears its history.", "pane.close", { pane }, cx);
+  }
+
+  // t3-menu's Close other panes: one question for all of them, as their prompts would replace each other.
+  async closeOthers(pane, confirmed, cx) {
+    const ps = panes(), p = ps.find(q => q.pane === pane);
+    if (!p) return;
+    const others = ps.filter(q => q.tab === p.tab && q.pane !== pane);
+    if (!confirmed) {
+      const ends = (await Promise.all(others.filter(q => q.terminal).map(q => atPrompt(q.terminal)))).filter(empty => !empty).length;
+      if (ends > 0) return this.ask("panes beside", namer()(p), ends === 1 ? "This stops 1 running process and clears its history." : `This stops ${ends} running processes and clears their histories.`, `t3-tabs.close-others-now:${pane}`, {}, cx);
+    }
+    for (const q of others) run("pane.close", { pane: q.pane });
+  }
+
+  // t3-menu's Move: Herdr has no command for it. A terminal goes where its labels say only when it has no pane, so
+  // its pane goes first (terminal.park; it keeps running) and new labels bring it a new one.
+  async move(terminal, space, tab, cx) {
+    const fail = (body) => notify({ title: "Couldn't move the pane", body, level: "error" });
+    const local = (id) => id.slice(id.lastIndexOf("/") + 1);
+    const read = async () => JSON.parse((await hc(["get", terminal, "--json"])).stdout);
+    const until = async (ready) => {
+      for (let waited = 0; waited < MOVE_WAIT; waited += MOVE_POLL) {
+        if (await ready().catch(() => false)) return true;
+        await cx.sleep(MOVE_POLL);
+      }
+      return false;
+    };
+    const was = await read().catch(() => null);
+    if (!was) return fail(`${terminal} didn't answer.`);
+    run("terminal.park", { terminal });
+    // Parking finishes in the background and clears the labels: set before that, the new ones would go too.
+    if (!await until(async () => !(await read()).labels?.["herdr.tab"])) return fail(`${terminal} kept its pane.`);
+    const put = (s, c) => hc(["label", terminal, `herdr.space=${s}`, `herdr.tab=${c}`]);
+    if ((await put(local(space), local(tab))).code !== 0) {
+      await put(was.labels["herdr.space"], was.labels["herdr.tab"]);
+      return fail(`${terminal} went back where it was.`);
+    }
+    if (await until(async () => panes().some(p => p.terminal === terminal && p.tab === tab))) run("pane.focus", { terminal });
+    else fail(`${terminal} is still running, but its new pane didn't appear.`);
   }
 
   // Each tab's width: its whole name while the room allows, else the longest names give way first.
@@ -274,7 +319,7 @@ export default class Tabs extends View {
           else run("tab.select", { id: c.id });
           cx.notify();
         })
-        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); detailsFor(this, null, cx); openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: c.id, space: space.id } } }); })
+        .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); detailsFor(this, null, cx); openOverlay({ mod: "t3-menu", kind: "popup", width: 200, height: 109, props: { tab: "tab", target: { id: c.id, space: space.id } } }); })
         .child(div().size(16).flex_none().flex().items_center().justify_center().child(glyph))
         // Its name's whole width, whatever the tab's: clipped to nothing, it only measures.
         .child(div().id(`name-${c.id}`).absolute().top(0).left(0).h(0).overflow_hidden().whitespace_nowrap().child(label)

@@ -6,7 +6,7 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { panes, terminals, agents, props, run, theme, home, layout } from "herdr";
+import { panes, terminals, agents, props, run, theme, home, layout, openOverlay } from "herdr";
 import { modStatus, namer, programOf } from "./name.js";
 import { ownStatus, subAgents, treeStatus } from "./tree.js";
 import { tip, tipMark } from "./tip.js";
@@ -79,6 +79,8 @@ export default class Pane extends View {
       .text_size(13)
       .on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
       .on_click(() => run("pane.focus", { pane }))
+      // t3-menu's size, from its mod.json.
+      .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "t3-menu", kind: "popup", width: 240, height: 337, props: { tab: "pane", target: { pane, terminal: p.terminal } } }); })
       .when(Boolean(pic), (el) => el.child(pic))
       .when(Boolean(p.terminal) && name !== p.terminal, (el) => el.child(div().flex_none().text_color(t.dim).child(p.terminal)))
       .child(div().min_w(0).truncate().text_size(13).font_medium().text_color(p.focused ? t.foreground : t.muted).child(name))

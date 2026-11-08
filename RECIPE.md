@@ -111,6 +111,7 @@ The sidebar, tabs, panes, Actions and New menu are [herdr-t3](https://github.com
 - `t3-panel`: new. Ports runs `ss -Hltnp`, or `Get-NetTCPConnection` on Windows; Machine reads CIM on Windows.
 - `t3-spotlight`: new, `"place": "none"`, opened by `mod.open:t3-spotlight`. It opens t3-files' viewer with `openOverlay({ mod: "t3-files", kind: "window", key: "t3-files:view", props: { viewer } })`, where `viewer` is `{ root, path, on }` or `{ url }`.
 - `t3-new-menu`: herdr-t3's, with the folder step. `check-new-menu.cjs` tests it in a fake `herdr`.
+- `t3-menu`: new, `"place": "none"`, the right-click menu for terminals (the layout root's `terminal_menu`), pane headers and tabs. It runs moves and closes as `t3-tabs.move:<terminal> <space> <tab>`, `t3-tabs.close-pane:<pane>` and `t3-tabs.close-others:<pane>`. `check-menu.cjs` tests it in a fake `herdr`.
 - `t3-common/`: what differs by OS, copied into `mods/t3-files/common/`, `mods/t3-spotlight/common/` and `mods/t3-new-menu/common/` by `sync.mjs`.
   - `platform.js`: open, reveal and its label, copy, the python name, hidden processes, PowerShell.
   - `fsx.js`: `list`, `listMany` and `stat` on any machine.
@@ -130,6 +131,8 @@ The sidebar, tabs, panes, Actions and New menu are [herdr-t3](https://github.com
 - Full-screen TUIs keep no scrollback, so `hc read` sees only their screen.
 - A popup is as tall as what it holds: the Ctrl+P list has a fixed height.
 - Ctrl+P takes Ctrl+P from terminal programs. On macOS bind `cmd-p`.
+- Herdr has no command to move a pane. `t3-tabs` runs `terminal.park`, waits for the labels to clear, then sets `herdr.space` and `herdr.tab`. Labels set while the pane exists are ignored, and labels set before parking finishes are wiped. A popup's tasks end when it closes, so this can't run in `t3-menu`.
+- `t3-menu`'s rows are always there, greyed when they can't apply: `terminal_menu` takes its height from `mod.json`, and `t3-pane` repeats that number.
 
 ## Done when
 
@@ -140,6 +143,8 @@ The sidebar, tabs, panes, Actions and New menu are [herdr-t3](https://github.com
 - Clicking a `.md` file in Files opens the viewer on Preview, and a `.html` file on Page with the page drawn.
 - New space, then another machine, lists that machine's home folders; Enter on `New space here` in one opens a space there.
 - `node mods/t3-new-menu/check-new-menu.cjs` prints `ok new menu`.
+- `node mods/t3-menu/check-menu.cjs` prints `ok: pane and tab menus…`.
+- Right-clicking a split pane and choosing Move to new space puts it in a new space with the same terminal address and process.
 - In the viewer, typing in Source shows `●`; `ctrl-s` saves the file and the `●` goes. On another machine too.
 - While a file is open with unsaved changes, changing it from a terminal shows `⚠`; without changes, the viewer shows the new text.
 - `ctrl-shift-f`, then typing a word from the repository, lists its matches; clicking one opens the file.

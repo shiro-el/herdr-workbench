@@ -341,6 +341,7 @@
     0
   ],
   "titlebar": "none",
+  "terminal_menu": "t3-menu",
   "traffic_lights": [
     16,
     13
