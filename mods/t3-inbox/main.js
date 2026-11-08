@@ -448,11 +448,19 @@ export default class Inbox extends View {
       const s = sp.find((x) => x.tabs.some((c) => c.id === p.tab));
       return s ? [{ ...p, address: p.terminal, status: "idle", lost: true, focused: p.pane === f?.pane, space: s.id, space_name: s.name }] : [];
     });
-    const every = [...runs, ...lost, ...sp.flatMap((s) => s.tabs.flatMap((c) => {
+    const carded = [...runs, ...lost, ...sp.flatMap((s) => s.tabs.flatMap((c) => {
       const p = ps.find((x) => x.tab === c.id && x.mod && programOf(x)?.inbox);
       return p && !runs.some((a) => a.tab === c.id) ? [{ ...p, address: `pane:${p.pane}`, status: modStatus(p) ?? "idle", focused: p.pane === f?.pane,
         space: s.id, space_name: s.name, program: { name: p.title, ...programOf(p) } }] : [];
     }))];
+    const term = new Map(all.map((k) => [k.address, k]));
+    // A sub-agent with its own pane is in agents() too. A card above it already lists it, so it gets no second one;
+    // through live parents only, the way the card's tree reaches it.
+    const under = (a) => {
+      for (let k = term.get(term.get(a.address)?.parent); k?.state === "live"; k = term.get(k.parent)) if (carded.some((c) => c.address === k.address)) return true;
+      return false;
+    };
+    const every = carded.filter((a) => !under(a));
     // The row in view: the focused agent's, or for a sub-agent with no row of its own (shown in a block, a peek), its
     // nearest listed ancestor's, as T3's resolveSidebarRowThreadId lights the parent of an open sub-agent.
     const inView = (() => {
@@ -482,8 +490,7 @@ export default class Inbox extends View {
     // A space that's gone reads as all; its id stays stored, so the scope returns with it.
     const scope = this.scope.filter((id) => sp.some((s) => s.id === id));
     const list = scope.length ? every.filter((a) => scope.includes(a.space)) : every;
-    const listed = new Map(every.map((a) => [a.address, a.status]));
-    const term = new Map(all.map((k) => [k.address, k]));
+    const listed = new Map(carded.map((a) => [a.address, a.status]));
     for (const [key, of] of Object.entries(this.pending)) {
       for (const [k, v] of Object.entries(of)) if (!term.has(k) || (term.get(k).labels?.[key] ?? "") === v) delete of[k];
     }

@@ -203,6 +203,27 @@ test("a failed turn needs the person: the terminal's error, which agents() can't
   assert.ok(texts(find(f.tree, "state-B")).includes("Needs you"));
 });
 
+test("a sub-agent with its own pane is a line on the card above it, not a second card", () => {
+  const f = fixture(); f.add("A", "idle", 300); f.add("kid", "working", 200); f.terms.at(-1).parent = "A";
+  f.add("grandkid", "done", 100); f.terms.at(-1).parent = "kid";
+  f.render();
+  assert.ok(find(f.tree, "card-A"));
+  assert.ok(!find(f.tree, "card-kid"));
+  assert.ok(!find(f.tree, "card-grandkid"), "any card above it counts");
+  assert.ok(texts(find(f.tree, "state-A")).includes("Working"), "its status still reaches the parent's card");
+  // In view, the parent's card lights.
+  f.context.focused = () => ({ pane: "kid", terminal: "kid" }); f.render();
+  assert.ok("bg" in find(f.tree, "card-A").style);
+  // Nothing above to list it: its own card again.
+  f.rows.splice(0, 1); f.render();
+  assert.ok(find(f.tree, "card-kid"));
+  assert.ok(!find(f.tree, "card-grandkid"));
+  // The tree stops at a finished terminal, so a parent past one doesn't count.
+  f.add("top", "idle", 400); f.terms.find((k) => k.address === "A").parent = "top"; f.terms.find((k) => k.address === "A").state = "exited";
+  f.terms.find((k) => k.address === "kid").parent = "A"; f.render();
+  assert.ok(find(f.tree, "card-kid"));
+});
+
 test("looking, seq and data order don't reshuffle; equal times go by address", () => {
   const f = fixture(), a = f.add("B", "done"); f.add("A", "done");
   f.render(); assert.deepEqual(f.order, ["A", "B"]);
