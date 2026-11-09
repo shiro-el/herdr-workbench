@@ -444,7 +444,9 @@ export default class Inbox extends View {
     // Mod panes that ask for a card (see the top), one a tab. `pane:<id>` is their address, in t3-inbox.rows too.
     // A pane whose program is an agent that stopped reporting (a Claude session moved to the background clears its
     // terminal's status) isn't in agents(); it still gets a card, idle unless what's under it works. Its pane is its way in.
-    const lost = ps.filter((p) => p.terminal && p.app && p.status == null && !runs.some((a) => a.address === p.terminal)).flatMap((p) => {
+    // p.app lives only in the app's memory, so after an app restart the foreground program is what still says so.
+    const claudeOn = new Set(all.filter((k) => k.foreground?.name === "claude").map((k) => k.address));
+    const lost = ps.filter((p) => p.terminal && (p.app || claudeOn.has(p.terminal)) && p.status == null && !runs.some((a) => a.address === p.terminal)).flatMap((p) => {
       const s = sp.find((x) => x.tabs.some((c) => c.id === p.tab));
       return s ? [{ ...p, address: p.terminal, status: "idle", lost: true, focused: p.pane === f?.pane, space: s.id, space_name: s.name }] : [];
     });
